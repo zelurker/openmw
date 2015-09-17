@@ -697,9 +697,14 @@ CharacterController::CharacterController(const MWWorld::Ptr &ptr, MWRender::Anim
             mAnimation->showCarriedLeft(updateCarriedLeftVisible(mWeaponType));
         }
 
-	// Don't test if the character is dead here to give a chance to an
-	// eventual attached script to stop the death animation for mannequins
-	mIdleState = CharState_Idle;
+        if(!cls.getCreatureStats(mPtr).isDead())
+            mIdleState = CharState_Idle;
+        else
+        {
+            // Set the death state, but don't play it yet
+            // We will play it in the first frame, but only if no script set the skipAnim flag
+            mDeathState = static_cast<CharacterState>(CharState_Death1 + mPtr.getClass().getCreatureStats(mPtr).getDeathAnimation());
+        }
     }
     else
     {
@@ -1831,6 +1836,13 @@ void CharacterController::update(float duration)
     }
     else if(cls.getCreatureStats(mPtr).isDead())
     {
+        // initial start of death animation for actors that started the game as dead
+        // not done in constructor since we need to give scripts a chance to set the mSkipAnim flag
+        if (!mSkipAnim && mDeathState != CharState_None && mCurrentDeath.empty())
+        {
+            playDeath(1.f, mDeathState);
+        }
+
         world->queueMovement(mPtr, osg::Vec3f(0.f, 0.f, 0.f));
     }
 
