@@ -1879,6 +1879,8 @@ void CharacterController::update(float duration)
     if(mMovementAnimationControlled && mPtr.getClass().isActor())
         world->queueMovement(mPtr, moved);
 
+    mSkipAnim = false;
+
     mAnimation->enableHeadAnimation(cls.isActor() && !cls.getCreatureStats(mPtr).isDead());
 }
 
