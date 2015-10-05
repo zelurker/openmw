@@ -1244,6 +1244,12 @@ namespace MWWorld
             if(objRot[0] < -half_pi)     objRot[0] = -half_pi;
             else if(objRot[0] > half_pi) objRot[0] =  half_pi;
         }
+#if 0
+        /* Disabling wrapping of angles for now :
+         * some mods set an angle with setangle and then test is using getangle
+         * expecting it to be at least 180°, which is not possible if it wraps
+         * here. After testing, even 720° is accepted by setangle and returned
+         * by getangle, so it should be safe to disable this for now */
         else
         {
             wrap(objRot[0]);
@@ -1251,6 +1257,7 @@ namespace MWWorld
 
         wrap(objRot[1]);
         wrap(objRot[2]);
+#endif
 
         ptr.getRefData().setPosition(pos);
 
