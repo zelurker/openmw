@@ -1214,7 +1214,7 @@ namespace MWWorld
         mWorldScene->updateObjectScale(ptr);
     }
 
-    void World::rotateObjectImp (const Ptr& ptr, const osg::Vec3f& rot, bool adjust)
+    void World::rotateObjectImp (const Ptr& ptr, const osg::Vec3f& rot, bool adjust,bool do_wrap)
     {
         const float pi = static_cast<float>(osg::PI);
 
@@ -1233,31 +1233,30 @@ namespace MWWorld
             objRot[2] = rot.z();
         }
 
-        if(ptr.getClass().isActor())
-        {
-            /* HACK? Actors shouldn't really be rotating around X (or Y), but
-             * currently it's done so for rotating the camera, which needs
-             * clamping.
-             */
-            const float half_pi = pi/2.f;
+        if (do_wrap) {
+            /* Some mods use setangle/getangle to set and test angles, so
+             * wraping must be disabled for these. But some other mods expect
+             * the angle of the player to remain between usual degree values
+             * so here they must be wraped ! */
+            if(ptr.getClass().isActor())
+            {
+                /* HACK? Actors shouldn't really be rotating around X (or Y), but
+                 * currently it's done so for rotating the camera, which needs
+                 * clamping.
+                 */
+                const float half_pi = pi/2.f;
 
-            if(objRot[0] < -half_pi)     objRot[0] = -half_pi;
-            else if(objRot[0] > half_pi) objRot[0] =  half_pi;
-        }
-#if 0
-        /* Disabling wrapping of angles for now :
-         * some mods set an angle with setangle and then test is using getangle
-         * expecting it to be at least 180°, which is not possible if it wraps
-         * here. After testing, even 720° is accepted by setangle and returned
-         * by getangle, so it should be safe to disable this for now */
-        else
-        {
-            wrap(objRot[0]);
-        }
+                if(objRot[0] < -half_pi)     objRot[0] = -half_pi;
+                else if(objRot[0] > half_pi) objRot[0] =  half_pi;
+            }
+            else
+            {
+                wrap(objRot[0]);
+            }
 
-        wrap(objRot[1]);
-        wrap(objRot[2]);
-#endif
+            wrap(objRot[1]);
+            wrap(objRot[2]);
+        }
 
         ptr.getRefData().setPosition(pos);
 
@@ -1326,12 +1325,12 @@ namespace MWWorld
         moveObject(actor, actor.getCell(), traced.x(), traced.y(), traced.z());
     }
 
-    void World::rotateObject (const Ptr& ptr,float x,float y,float z, bool adjust)
+    void World::rotateObject (const Ptr& ptr,float x,float y,float z, bool adjust,bool do_wrap)
     {
         rotateObjectImp(ptr, osg::Vec3f(osg::DegreesToRadians(x),
                                            osg::DegreesToRadians(y),
                                            osg::DegreesToRadians(z)),
-                        adjust);
+                        adjust,do_wrap);
     }
 
     MWWorld::Ptr World::safePlaceObject(const MWWorld::Ptr& ptr, MWWorld::CellStore* cell, ESM::Position pos)
