@@ -413,7 +413,7 @@ osg::ref_ptr<CSVRender::TagBase> CSVRender::WorldspaceWidget::mousePick (QMouseE
 std::string CSVRender::WorldspaceWidget::mapButton (QMouseEvent *event)
 {
     std::pair<Qt::MouseButton, bool> phyiscal (
-        event->button(), QApplication::keyboardModifiers() & Qt::ControlModifier);
+        event->button(), event->modifiers() & Qt::ControlModifier);
 
     std::map<std::pair<Qt::MouseButton, bool>, std::string>::const_iterator iter =
         mButtonMapping.find (phyiscal);
@@ -548,15 +548,13 @@ void CSVRender::WorldspaceWidget::mouseMoveEvent (QMouseEvent *event)
 
         double factor = mDragFactor;
 
-        if (QApplication::keyboardModifiers() & Qt::ShiftModifier)
+        if (event->modifiers() & Qt::ShiftModifier)
             factor *= mDragShiftFactor;
 
         EditMode& editMode = dynamic_cast<CSVRender::EditMode&> (*mEditMode->getCurrent());
 
         editMode.drag (diffX, diffY, factor);
     }
-
-    RenderWidget::mouseMoveEvent(event);
 }
 
 void CSVRender::WorldspaceWidget::mousePressEvent (QMouseEvent *event)
@@ -565,32 +563,14 @@ void CSVRender::WorldspaceWidget::mousePressEvent (QMouseEvent *event)
 
     if (!mDragging)
         mDragMode = button;
-
-    if (button=="p-navi" || button=="s-navi")
-    {
-
-    }
-    else if (button=="p-edit" || button=="s-edit" || button=="select")
-    {
-        osg::ref_ptr<TagBase> tag = mousePick (event);
-
-        EditMode& editMode = dynamic_cast<CSVRender::EditMode&> (*mEditMode->getCurrent());
-
-        if (button=="p-edit")
-            editMode.primaryEditPressed (tag);
-        else if (button=="s-edit")
-            editMode.secondaryEditPressed (tag);
-        else if (button=="select")
-            editMode.selectPressed (tag);
-    }
 }
 
 void CSVRender::WorldspaceWidget::mouseReleaseEvent (QMouseEvent *event)
 {
+    std::string button = mapButton (event);
+
     if (mDragging)
     {
-        std::string button = mapButton (event);
-
         if (mDragMode=="p-navi" || mDragMode=="s-navi")
         {
 
@@ -603,10 +583,21 @@ void CSVRender::WorldspaceWidget::mouseReleaseEvent (QMouseEvent *event)
             mDragging = false;
         }
     }
+    else
+    {
+        if (button=="p-navi" || button=="s-navi")
+        {
+
+        }
+        else if (button=="p-edit" || button=="s-edit" || button=="select")
+        {
+            osg::ref_ptr<TagBase> tag = mousePick (event);
+
+            handleMouseClick (tag, button, event->modifiers() & Qt::ShiftModifier);
+        }
+    }
 
     mDragMode.clear();
-
-    RenderWidget::mouseReleaseEvent(event);
 }
 
 void CSVRender::WorldspaceWidget::mouseDoubleClickEvent (QMouseEvent *event)
@@ -615,7 +606,6 @@ void CSVRender::WorldspaceWidget::mouseDoubleClickEvent (QMouseEvent *event)
     {
         //mMouse->mouseDoubleClickEvent(event);
     }
-    //SceneWidget::mouseDoubleClickEvent(event);
 }
 
 void CSVRender::WorldspaceWidget::wheelEvent (QWheelEvent *event)
@@ -624,15 +614,13 @@ void CSVRender::WorldspaceWidget::wheelEvent (QWheelEvent *event)
     {
         double factor = mDragWheelFactor;
 
-        if (QApplication::keyboardModifiers() & Qt::ShiftModifier)
+        if (event->modifiers() & Qt::ShiftModifier)
             factor *= mDragShiftFactor;
 
         EditMode& editMode = dynamic_cast<CSVRender::EditMode&> (*mEditMode->getCurrent());
 
         editMode.dragWheel (event->delta(), factor);
     }
-
-    RenderWidget::wheelEvent(event);
 }
 
 void CSVRender::WorldspaceWidget::keyPressEvent (QKeyEvent *event)
@@ -649,4 +637,16 @@ void CSVRender::WorldspaceWidget::keyPressEvent (QKeyEvent *event)
     }
     else
         RenderWidget::keyPressEvent(event);
+}
+
+void CSVRender::WorldspaceWidget::handleMouseClick (osg::ref_ptr<TagBase> tag, const std::string& button, bool shift)
+{
+    EditMode& editMode = dynamic_cast<CSVRender::EditMode&> (*mEditMode->getCurrent());
+
+    if (button=="p-edit")
+        editMode.primaryEditPressed (tag);
+    else if (button=="s-edit")
+        editMode.secondaryEditPressed (tag);
+    else if (button=="select")
+        editMode.selectPressed (tag);
 }
