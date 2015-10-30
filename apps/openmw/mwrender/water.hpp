@@ -3,12 +3,16 @@
 
 #include <osg/ref_ptr>
 
+#include <components/settings/settings.hpp>
+
 #include "../mwworld/cellstore.hpp"
 
 namespace osg
 {
     class Group;
     class PositionAttitudeTransform;
+    class Geode;
+    class Node;
 }
 
 namespace osgUtil
@@ -29,6 +33,8 @@ namespace MWWorld
 namespace MWRender
 {
 
+    class Refraction;
+    class Reflection;
     class RippleSimulation;
 
     /// Water rendering
@@ -37,11 +43,18 @@ namespace MWRender
         static const int CELL_SIZE = 8192;
 
         osg::ref_ptr<osg::Group> mParent;
+        osg::ref_ptr<osg::Group> mSceneRoot;
         osg::ref_ptr<osg::PositionAttitudeTransform> mWaterNode;
+        osg::ref_ptr<osg::Geode> mWaterGeode;
         Resource::ResourceSystem* mResourceSystem;
         osg::ref_ptr<osgUtil::IncrementalCompileOperation> mIncrementalCompileOperation;
 
         std::auto_ptr<RippleSimulation> mSimulation;
+
+        osg::ref_ptr<Refraction> mRefraction;
+        osg::ref_ptr<Reflection> mReflection;
+
+        const std::string mResourcePath;
 
         bool mEnabled;
         bool mToggled;
@@ -50,8 +63,18 @@ namespace MWRender
         osg::Vec3f getSceneNodeCoordinates(int gridX, int gridY);
         void updateVisible();
 
+        void createSimpleWaterStateSet(osg::Node* node);
+
+        /// @param reflection the reflection camera (required)
+        /// @param refraction the refraction camera (optional)
+        void createShaderWaterStateSet(osg::Node* node, Reflection* reflection, Refraction* refraction);
+
+        void updateWaterMaterial();
+
     public:
-        Water(osg::Group* parent, Resource::ResourceSystem* resourceSystem, osgUtil::IncrementalCompileOperation* ico, const MWWorld::Fallback* fallback);
+        Water(osg::Group* parent, osg::Group* sceneRoot,
+              Resource::ResourceSystem* resourceSystem, osgUtil::IncrementalCompileOperation* ico, const MWWorld::Fallback* fallback,
+              const std::string& resourcePath);
         ~Water();
 
         void setEnabled(bool enabled);
@@ -73,6 +96,7 @@ namespace MWRender
 
         void update(float dt);
 
+        void processChangedSettings(const Settings::CategorySettingVector& settings);
     };
 
 }

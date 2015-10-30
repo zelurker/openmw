@@ -122,7 +122,8 @@ namespace MWRender
         bool mWireframe;
     };
 
-    RenderingManager::RenderingManager(osgViewer::Viewer* viewer, osg::ref_ptr<osg::Group> rootNode, Resource::ResourceSystem* resourceSystem, const MWWorld::Fallback* fallback)
+    RenderingManager::RenderingManager(osgViewer::Viewer* viewer, osg::ref_ptr<osg::Group> rootNode, Resource::ResourceSystem* resourceSystem,
+                                       const MWWorld::Fallback* fallback, const std::string& resourcePath)
         : mViewer(viewer)
         , mRootNode(rootNode)
         , mResourceSystem(resourceSystem)
@@ -145,7 +146,7 @@ namespace MWRender
 
         mEffectManager.reset(new EffectManager(lightRoot, mResourceSystem));
 
-        mWater.reset(new Water(lightRoot, mResourceSystem, mViewer->getIncrementalCompileOperation(), fallback));
+        mWater.reset(new Water(mRootNode, lightRoot, mResourceSystem, mViewer->getIncrementalCompileOperation(), fallback, resourcePath));
 
         mTerrain.reset(new Terrain::TerrainGrid(lightRoot, mResourceSystem, mViewer->getIncrementalCompileOperation(),
                                                 new TerrainStorage(mResourceSystem->getVFS(), false), Mask_Terrain));
@@ -190,13 +191,16 @@ namespace MWRender
         mViewer->getCamera()->setComputeNearFarMode(osg::Camera::DO_NOT_COMPUTE_NEAR_FAR);
         mViewer->getCamera()->setCullingMode(cullingMode);
 
-        mViewer->getCamera()->setCullMask(~(Mask_UpdateVisitor));
+        mViewer->getCamera()->setCullMask(~(Mask_UpdateVisitor|Mask_SimpleWater));
 
         mNearClip = Settings::Manager::getFloat("near clip", "Camera");
         mViewDistance = Settings::Manager::getFloat("viewing distance", "Camera");
         mFieldOfView = Settings::Manager::getFloat("field of view", "General");
         updateProjectionMatrix();
         mStateUpdater->setFogEnd(mViewDistance);
+
+        mRootNode->getOrCreateStateSet()->addUniform(new osg::Uniform("near", mNearClip));
+        mRootNode->getOrCreateStateSet()->addUniform(new osg::Uniform("far", mViewDistance));
     }
 
     RenderingManager::~RenderingManager()
@@ -260,6 +264,7 @@ namespace MWRender
     {
         // need to wrap this in a StateUpdater?
         mSunLight->setDiffuse(colour);
+        mSunLight->setSpecular(colour);
     }
 
     void RenderingManager::setSunDirection(const osg::Vec3f &direction)
@@ -780,6 +785,8 @@ namespace MWRender
             }
             else if (it->first == "General" && (it->second == "texture filtering" || it->second == "anisotropy"))
                 updateTextureFiltering();
+            else if (it->first == "Water")
+                mWater->processChangedSettings(changed);
         }
     }
 

@@ -32,6 +32,7 @@
 #include "camera.hpp"
 #include "rotatecontroller.hpp"
 #include "renderbin.hpp"
+#include "vismask.hpp"
 
 namespace
 {
@@ -441,6 +442,7 @@ void NpcAnimation::updateNpcBase()
     }
     else
     {
+        mObjectRoot->setNodeMask(Mask_FirstPerson);
         if(isWerewolf)
             addAnimSource(smodel);
         else
