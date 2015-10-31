@@ -487,12 +487,9 @@ namespace MWRender
         rttCamera->setRenderOrder(osg::Camera::PRE_RENDER);
         rttCamera->setReferenceFrame(osg::Camera::ABSOLUTE_RF);
         rttCamera->setRenderTargetImplementation(osg::Camera::FRAME_BUFFER_OBJECT, osg::Camera::PIXEL_BUFFER_RTT);
-        rttCamera->setClearColor(mViewer->getCamera()->getClearColor());
-        rttCamera->setClearMask(mViewer->getCamera()->getClearMask());
         rttCamera->setProjectionMatrixAsPerspective(mFieldOfView, w/float(h), mNearClip, mViewDistance);
         rttCamera->setViewMatrix(mViewer->getCamera()->getViewMatrix());
         rttCamera->setViewport(0, 0, w, h);
-        rttCamera->setGraphicsContext(mViewer->getCamera()->getGraphicsContext());
 
         osg::ref_ptr<osg::Texture2D> texture (new osg::Texture2D);
         texture->setInternalFormat(GL_RGB);
@@ -591,23 +588,27 @@ namespace MWRender
 
     }
 
+    osg::ref_ptr<osgUtil::IntersectionVisitor> createIntersectionVisitor(osgUtil::Intersector* intersector, bool ignorePlayer, bool ignoreActors)
+    {
+        osg::ref_ptr<osgUtil::IntersectionVisitor> intersectionVisitor( new osgUtil::IntersectionVisitor(intersector));
+        int mask = intersectionVisitor->getTraversalMask();
+        mask &= ~(Mask_RenderToTexture|Mask_Sky|Mask_Debug|Mask_Effect|Mask_Water|Mask_SimpleWater);
+        if (ignorePlayer)
+            mask &= ~(Mask_Player);
+        if (ignoreActors)
+            mask &= ~(Mask_Actor|Mask_Player);
+
+        intersectionVisitor->setTraversalMask(mask);
+        return intersectionVisitor;
+    }
+
     RenderingManager::RayResult RenderingManager::castRay(const osg::Vec3f& origin, const osg::Vec3f& dest, bool ignorePlayer, bool ignoreActors)
     {
         osg::ref_ptr<osgUtil::LineSegmentIntersector> intersector (new osgUtil::LineSegmentIntersector(osgUtil::LineSegmentIntersector::MODEL,
             origin, dest));
         intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
 
-        osgUtil::IntersectionVisitor intersectionVisitor(intersector);
-        int mask = intersectionVisitor.getTraversalMask();
-        mask &= ~(Mask_RenderToTexture|Mask_Sky|Mask_Debug|Mask_Effect|Mask_Water);
-        if (ignorePlayer)
-            mask &= ~(Mask_Player);
-        if (ignoreActors)
-            mask &= ~(Mask_Actor|Mask_Player);
-
-        intersectionVisitor.setTraversalMask(mask);
-
-        mRootNode->accept(intersectionVisitor);
+        mRootNode->accept(*createIntersectionVisitor(intersector, ignorePlayer, ignoreActors));
 
         return getIntersectionResult(intersector);
     }
@@ -626,17 +627,7 @@ namespace MWRender
         intersector->setEnd(end);
         intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
 
-        osgUtil::IntersectionVisitor intersectionVisitor(intersector);
-        int mask = intersectionVisitor.getTraversalMask();
-        mask &= ~(Mask_RenderToTexture|Mask_Sky|Mask_Debug|Mask_Effect|Mask_Water);
-        if (ignorePlayer)
-            mask &= ~(Mask_Player);
-        if (ignoreActors)
-            mask &= ~(Mask_Actor|Mask_Player);
-
-        intersectionVisitor.setTraversalMask(mask);
-
-        mViewer->getCamera()->accept(intersectionVisitor);
+        mViewer->getCamera()->accept(*createIntersectionVisitor(intersector, ignorePlayer, ignoreActors));
 
         return getIntersectionResult(intersector);
     }
