@@ -2603,7 +2603,18 @@ namespace MWWorld
             // Reduce mana
             if (!fail)
             {
-                magicka.setCurrent(magicka.getCurrent() - spell->mData.mCost);
+		int cost = spell->mData.mCost;
+		int horatio = Settings::Manager::getInt("horatio casting","Game");
+		if (horatio) {
+		    int school = MWMechanics::getSpellSchool(spell, actor);
+		    int skill = actor.getClass().getSkill(actor, MWMechanics::spellSchoolToSkill(school));
+		    if (horatio == 1) // square of skill, default
+			cost -= (skill*skill/11100.0)*cost;
+		    else if (horatio == 2) // linear
+			cost -= (skill / 111)*cost;
+		}
+
+                magicka.setCurrent(magicka.getCurrent() - cost);
                 stats.setMagicka(magicka);
             }
         }
