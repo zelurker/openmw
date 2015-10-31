@@ -311,6 +311,12 @@ namespace Compiler
                 return true;
             }
 
+            if (mExplicit.empty() && getContext().isId (name2))
+            {
+                mExplicit = name2;
+                return true;
+            }
+
             // die in a fire, Morrowind script compiler!
             if (const Extensions *extensions = getContext().getExtensions())
             {
@@ -325,12 +331,6 @@ namespace Compiler
 
                     return true;
                 }
-            }
-
-            if (mExplicit.empty() && getContext().isId (name2))
-            {
-                mExplicit = name2;
-                return true;
             }
         }
         else
