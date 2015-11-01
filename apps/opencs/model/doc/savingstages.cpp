@@ -134,23 +134,34 @@ void CSMDoc::WriteDialogueCollectionStage::perform (int stage, Messages& message
         state==CSMWorld::RecordBase::State_ModifiedOnly ||
         infoModified)
     {
-        mState.getWriter().startRecord (topic.mModified.sRecordId);
-        mState.getWriter().writeHNCString ("NAME", topic.mModified.mId);
-        topic.mModified.save (mState.getWriter());
-        mState.getWriter().endRecord (topic.mModified.sRecordId);
+        if (infoModified && state != CSMWorld::RecordBase::State_Modified
+                         && state != CSMWorld::RecordBase::State_ModifiedOnly)
+        {
+            mState.getWriter().startRecord (topic.mBase.sRecordId);
+            mState.getWriter().writeHNCString ("NAME", topic.mBase.mId);
+            topic.mBase.save (mState.getWriter());
+            mState.getWriter().endRecord (topic.mBase.sRecordId);
+        }
+        else
+        {
+            mState.getWriter().startRecord (topic.mModified.sRecordId);
+            mState.getWriter().writeHNCString ("NAME", topic.mModified.mId);
+            topic.mModified.save (mState.getWriter());
+            mState.getWriter().endRecord (topic.mModified.sRecordId);
+        }
 
         // write modified selected info records
         for (CSMWorld::InfoCollection::RecordConstIterator iter (range.first); iter!=range.second;
              ++iter)
         {
-            CSMWorld::RecordBase::State state = iter->mState;
+            CSMWorld::RecordBase::State infoState = iter->mState;
 
-            if (state==CSMWorld::RecordBase::State_Deleted)
+            if (infoState==CSMWorld::RecordBase::State_Deleted)
             {
                 /// \todo wrote record with delete flag
             }
-            else if (state==CSMWorld::RecordBase::State_Modified ||
-                state==CSMWorld::RecordBase::State_ModifiedOnly)
+            else if (infoState==CSMWorld::RecordBase::State_Modified ||
+                     infoState==CSMWorld::RecordBase::State_ModifiedOnly)
             {
                 ESM::DialInfo info = iter->get();
                 info.mId = info.mId.substr (info.mId.find_last_of ('#')+1);
