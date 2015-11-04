@@ -13,6 +13,7 @@
 #include <osg/MatrixTransform>
 #include <osg/FrontFace>
 #include <osg/Shader>
+#include <osg/GLExtensions>
 
 #include <osgDB/ReadFile>
 
@@ -31,6 +32,9 @@
 #include <components/settings/settings.hpp>
 
 #include <components/esm/loadcell.hpp>
+
+#include "../mwworld/cellstore.hpp"
+#include "../mwworld/fallback.hpp"
 
 #include "vismask.hpp"
 #include "ripplesimulation.hpp"
@@ -77,6 +81,10 @@ namespace
         osg::ref_ptr<osg::Geometry> waterGeom (new osg::Geometry);
         waterGeom->setVertexArray(verts);
         waterGeom->setTexCoordArray(0, texcoords);
+
+        osg::ref_ptr<osg::Vec3Array> normal (new osg::Vec3Array);
+        normal->push_back(osg::Vec3f(0,0,1));
+        waterGeom->setNormalArray(normal, osg::Array::BIND_OVERALL);
 
         waterGeom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::QUADS,0,verts->size()));
         return waterGeom;
@@ -144,14 +152,19 @@ class ClipCullNode : public osg::Group
 
             osg::RefMatrix* modelViewMatrix = new osg::RefMatrix(*cv->getModelViewMatrix());
 
+            // apply the height of the plane
+            // we can't apply this height in the addClipPlane() since the "flip the below graph" function would otherwise flip the height as well
+            modelViewMatrix->preMultTranslate(mCullPlane->getNormal() * ((*mCullPlane)[3] * -1));
+
             // flip the below graph if the eye point is above the plane
             if (mCullPlane->intersect(osg::BoundingSphere(osg::Vec3d(0,0,eyePoint.z()), 0)) > 0)
             {
                 modelViewMatrix->preMultScale(osg::Vec3(1,1,-1));
             }
+
             // move the plane back along its normal a little bit to prevent bleeding at the water shore
-            const float clipFudge = 5;
-            modelViewMatrix->preMultTranslate(mCullPlane->getNormal() * (-clipFudge));
+            const float clipFudge = -5;
+            modelViewMatrix->preMultTranslate(mCullPlane->getNormal() * clipFudge);
 
             cv->pushModelViewMatrix(modelViewMatrix, osg::Transform::RELATIVE_RF);
             traverse(node, nv);
@@ -167,7 +180,7 @@ public:
     {
         addCullCallback (new PlaneCullCallback(&mPlane));
 
-        mClipNodeTransform = new osg::PositionAttitudeTransform;
+        mClipNodeTransform = new osg::Group;
         mClipNodeTransform->addCullCallback(new FlipCallback(&mPlane));
         addChild(mClipNodeTransform);
 
@@ -183,12 +196,12 @@ public:
         mPlane = plane;
 
         mClipNode->getClipPlaneList().clear();
-        mClipNode->addClipPlane(new osg::ClipPlane(0, mPlane));
+        mClipNode->addClipPlane(new osg::ClipPlane(0, osg::Plane(mPlane.getNormal(), 0))); // mPlane.d() applied in FlipCallback
         mClipNode->setStateSetModes(*getOrCreateStateSet(), osg::StateAttribute::ON);
     }
 
 private:
-    osg::ref_ptr<osg::PositionAttitudeTransform> mClipNodeTransform;
+    osg::ref_ptr<osg::Group> mClipNodeTransform;
     osg::ref_ptr<osg::ClipNode> mClipNode;
 
     osg::Plane mPlane;
@@ -201,6 +214,36 @@ public:
     virtual void operator()(osg::Node* node, osg::NodeVisitor* nv)
     {
         // no traverse()
+    }
+};
+
+/// Moves water mesh away from the camera slightly if the camera gets too close on the Z axis.
+/// The offset works around graphics artifacts that occured with the GL_DEPTH_CLAMP when the camera gets extremely close to the mesh (seen on NVIDIA at least).
+/// Must be added as a Cull callback.
+class FudgeCallback : public osg::NodeCallback
+{
+public:
+    virtual void operator()(osg::Node* node, osg::NodeVisitor* nv)
+    {
+        osgUtil::CullVisitor* cv = static_cast<osgUtil::CullVisitor*>(nv);
+
+        const float fudge = 0.2;
+        if (std::abs(cv->getEyeLocal().z()) < fudge)
+        {
+            float diff = fudge - cv->getEyeLocal().z();
+            osg::RefMatrix* modelViewMatrix = new osg::RefMatrix(*cv->getModelViewMatrix());
+
+            if (cv->getEyeLocal().z() > 0)
+                modelViewMatrix->preMultTranslate(osg::Vec3f(0,0,-diff));
+            else
+                modelViewMatrix->preMultTranslate(osg::Vec3f(0,0,diff));
+
+            cv->pushModelViewMatrix(modelViewMatrix, osg::Transform::RELATIVE_RF);
+            traverse(node, nv);
+            cv->popModelViewMatrix();
+        }
+        else
+            traverse(node, nv);
     }
 };
 
@@ -389,11 +432,34 @@ private:
     osg::ref_ptr<osg::Node> mScene;
 };
 
+/// DepthClampCallback enables GL_DEPTH_CLAMP for the current draw, if supported.
+class DepthClampCallback : public osg::Drawable::DrawCallback
+{
+public:
+    virtual void drawImplementation(osg::RenderInfo& renderInfo,const osg::Drawable* drawable) const
+    {
+        static bool supported = osg::isGLExtensionOrVersionSupported(renderInfo.getState()->getContextID(), "GL_ARB_depth_clamp", 3.3);
+        if (!supported)
+        {
+            drawable->drawImplementation(renderInfo);
+            return;
+        }
+
+        glEnable(GL_DEPTH_CLAMP);
+
+        drawable->drawImplementation(renderInfo);
+
+        // restore default
+        glDisable(GL_DEPTH_CLAMP);
+    }
+};
+
 Water::Water(osg::Group *parent, osg::Group* sceneRoot, Resource::ResourceSystem *resourceSystem, osgUtil::IncrementalCompileOperation *ico,
              const MWWorld::Fallback* fallback, const std::string& resourcePath)
     : mParent(parent)
     , mSceneRoot(sceneRoot)
     , mResourceSystem(resourceSystem)
+    , mFallback(fallback)
     , mResourcePath(resourcePath)
     , mEnabled(true)
     , mToggled(true)
@@ -402,6 +468,7 @@ Water::Water(osg::Group *parent, osg::Group* sceneRoot, Resource::ResourceSystem
     mSimulation.reset(new RippleSimulation(parent, resourceSystem, fallback));
 
     osg::ref_ptr<osg::Geometry> waterGeom = createWaterGeometry(CELL_SIZE*150, 40, 900);
+    waterGeom->setDrawCallback(new DepthClampCallback);
 
     mWaterGeode = new osg::Geode;
     mWaterGeode->addDrawable(waterGeom);
@@ -412,10 +479,11 @@ Water::Water(osg::Group *parent, osg::Group* sceneRoot, Resource::ResourceSystem
 
     mWaterNode = new osg::PositionAttitudeTransform;
     mWaterNode->addChild(mWaterGeode);
+    mWaterNode->addCullCallback(new FudgeCallback);
 
     // simple water fallback for the local map
     osg::ref_ptr<osg::Geode> geode2 (osg::clone(mWaterGeode.get(), osg::CopyOp::DEEP_COPY_NODES));
-    createSimpleWaterStateSet(geode2);
+    createSimpleWaterStateSet(geode2, mFallback->getFallbackFloat("Water_Map_Alpha"));
     geode2->setNodeMask(Mask_SimpleWater);
     mWaterNode->addChild(geode2);
 
@@ -457,19 +525,19 @@ void Water::updateWaterMaterial()
         createShaderWaterStateSet(mWaterGeode, mReflection, mRefraction);
     }
     else
-        createSimpleWaterStateSet(mWaterGeode);
+        createSimpleWaterStateSet(mWaterGeode, mFallback->getFallbackFloat("Water_World_Alpha"));
 
     updateVisible();
 }
 
-void Water::createSimpleWaterStateSet(osg::Node* node)
+void Water::createSimpleWaterStateSet(osg::Node* node, float alpha)
 {
     osg::ref_ptr<osg::StateSet> stateset (new osg::StateSet);
 
     osg::ref_ptr<osg::Material> material (new osg::Material);
-    material->setEmission(osg::Material::FRONT_AND_BACK, osg::Vec4f(1.f, 1.f, 1.f, 1.f));
-    material->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.f, 0.f, 0.f, 0.7f));
-    material->setAmbient(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.f, 0.f, 0.f, 1.f));
+    material->setEmission(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.f, 0.f, 0.f, 1.f));
+    material->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(1.f, 1.f, 1.f, alpha));
+    material->setAmbient(osg::Material::FRONT_AND_BACK, osg::Vec4f(1.f, 1.f, 1.f, 1.f));
     material->setColorMode(osg::Material::OFF);
     stateset->setAttributeAndModes(material, osg::StateAttribute::ON);
 
@@ -483,14 +551,18 @@ void Water::createSimpleWaterStateSet(osg::Node* node)
     stateset->setRenderBinDetails(MWRender::RenderBin_Water, "RenderBin");
 
     std::vector<osg::ref_ptr<osg::Texture2D> > textures;
-    for (int i=0; i<32; ++i)
+    int frameCount = mFallback->getFallbackInt("Water_SurfaceFrameCount");
+    std::string texture = mFallback->getFallbackString("Water_SurfaceTexture");
+    for (int i=0; i<frameCount; ++i)
     {
         std::ostringstream texname;
-        texname << "textures/water/water" << std::setw(2) << std::setfill('0') << i << ".dds";
+        texname << "textures/water/" << texture << std::setw(2) << std::setfill('0') << i << ".dds";
         textures.push_back(mResourceSystem->getTextureManager()->getTexture2D(texname.str(), osg::Texture::REPEAT, osg::Texture::REPEAT));
     }
 
-    osg::ref_ptr<NifOsg::FlipController> controller (new NifOsg::FlipController(0, 2/32.f, textures));
+    float fps = mFallback->getFallbackFloat("Water_SurfaceFPS");
+
+    osg::ref_ptr<NifOsg::FlipController> controller (new NifOsg::FlipController(0, 1.f/fps, textures));
     controller->setSource(boost::shared_ptr<SceneUtil::ControllerSource>(new SceneUtil::FrameTimeSource));
     node->setUpdateCallback(controller);
     node->setStateSet(stateset);
@@ -558,6 +630,17 @@ void Water::processChangedSettings(const Settings::CategorySettingVector& settin
 Water::~Water()
 {
     mParent->removeChild(mWaterNode);
+
+    if (mReflection)
+    {
+        mParent->removeChild(mReflection);
+        mReflection = NULL;
+    }
+    if (mRefraction)
+    {
+        mParent->removeChild(mRefraction);
+        mRefraction = NULL;
+    }
 }
 
 void Water::setEnabled(bool enabled)
