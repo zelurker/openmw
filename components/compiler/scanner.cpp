@@ -294,8 +294,8 @@ namespace Compiler
             name = name.substr (1, name.size()-2);
 // allow keywords enclosed in ""
 /// \todo optionally disable
-//            cont = parser.parseName (name, loc, *this);
-//            return true;
+            cont = parser.parseName (name, loc, *this);
+            return true;
         }
 
         int i = 0;
