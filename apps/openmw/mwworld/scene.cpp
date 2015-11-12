@@ -48,30 +48,6 @@ namespace
         if (ptr.getRefData().getBaseNode() != NULL)
         {
             osg::Quat worldRotQuat(ptr.getRefData().getPosition().rot[2], osg::Vec3(0,0,-1));
-<<<<<<< HEAD
-            if (!ptr.getClass().isActor()) {
-		if (prio)
-		    /* There are 2 ways to handle rotations, the setangle way
-		     * (prio = 1), or the usual way */
-		    worldRotQuat = osg::Quat(ptr.getRefData().getPosition().rot[1], osg::Vec3(0,-1,0)) *
-			osg::Quat(ptr.getRefData().getPosition().rot[0], osg::Vec3(-1,0,0)) * worldRotQuat;
-		else
-		    worldRotQuat = worldRotQuat * osg::Quat(ptr.getRefData().getPosition().rot[1], osg::Vec3(0,-1,0)) *
-			osg::Quat(ptr.getRefData().getPosition().rot[0], osg::Vec3(-1,0,0));
-	    }
-
-            float x = ptr.getRefData().getLocalRotation().rot[0];
-            float y = ptr.getRefData().getLocalRotation().rot[1];
-            float z = ptr.getRefData().getLocalRotation().rot[2];
-
-            osg::Quat rot(z, osg::Vec3(0,0,-1));
-            if (!ptr.getClass().isActor()) {
-		if (prio)
-		    rot = osg::Quat(y, osg::Vec3(0,-1,0)) * osg::Quat(x, osg::Vec3(-1,0,0)) * rot;
-		else
-		    rot = rot * osg::Quat(y, osg::Vec3(0,-1,0)) * osg::Quat(x, osg::Vec3(-1,0,0));
-	    }
-=======
             if (!ptr.getClass().isActor())
             {
                 float xr = ptr.getRefData().getPosition().rot[0];
@@ -82,7 +58,6 @@ namespace
                 else
                     worldRotQuat = osg::Quat(xr, osg::Vec3(-1,0,0)) * osg::Quat(yr, osg::Vec3(0,-1,0)) * worldRotQuat;
             }
->>>>>>> 9e3eb8291fe5bf0e380f057809794d589ee5be5b
 
             rendering.rotateObject(ptr, worldRotQuat);
             physics.updateRotation(ptr);
@@ -159,15 +134,9 @@ namespace
 namespace MWWorld
 {
 
-<<<<<<< HEAD
-    void Scene::updateObjectLocalRotation (const Ptr& ptr, int prio)
-    {
-        ::updateObjectLocalRotation(ptr, *mPhysics, mRendering,prio);
-=======
     void Scene::updateObjectRotation (const Ptr& ptr, bool inverseRotationOrder)
     {
         ::updateObjectRotation(ptr, *mPhysics, mRendering, inverseRotationOrder);
->>>>>>> 9e3eb8291fe5bf0e380f057809794d589ee5be5b
     }
 
     void Scene::updateObjectScale(const Ptr &ptr)
