@@ -316,6 +316,10 @@ namespace MWScript
                         MWWorld::Ptr base = ptr;
                         ptr = MWWorld::Ptr(ptr.getBase(), store);
                         dynamic_cast<MWScript::InterpreterContext&>(runtime.getContext()).updatePtr(base,ptr);
+                        ptr = MWBase::Environment::get().getWorld()->moveObject(ptr,store,x,y,z);
+
+                        MWWorld::Ptr base = ptr;
+                        dynamic_cast<MWScript::InterpreterContext&>(runtime.getContext()).updatePtr(base,ptr);
 
                         float ax = osg::RadiansToDegrees(ptr.getRefData().getPosition().rot[0]);
                         float ay = osg::RadiansToDegrees(ptr.getRefData().getPosition().rot[1]);
@@ -365,8 +369,7 @@ namespace MWScript
                     if (ptr == MWMechanics::getPlayer())
                     {
                         MWWorld::CellStore* cell = MWBase::Environment::get().getWorld()->getExterior(cx,cy);
-                        MWBase::Environment::get().getWorld()->moveObject(ptr,cell,x,y,z);
-                        ptr = MWWorld::Ptr(ptr.getBase(), cell);
+                        ptr = MWBase::Environment::get().getWorld()->moveObject(ptr,cell,x,y,z);
                     }
                     else
                     {
