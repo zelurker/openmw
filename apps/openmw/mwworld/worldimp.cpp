@@ -1247,38 +1247,15 @@ namespace MWWorld
 
             if(objRot[0] < -half_pi)     objRot[0] = -half_pi;
             else if(objRot[0] > half_pi) objRot[0] =  half_pi;
-        }
-        else
-        {
-            wrap(objRot[0]);
-        }
 
-        wrap(objRot[1]);
-        wrap(objRot[2]);
+            wrap(objRot[1]);
+            wrap(objRot[2]);
+        }
 
         ptr.getRefData().setPosition(pos);
 
         if(ptr.getRefData().getBaseNode() != 0)
-            mWorldScene->updateObjectLocalRotation(ptr,1);
-    }
-
-    void World::localRotateObject (const Ptr& ptr, float x, float y, float z)
-    {
-        LocalRotation rot = ptr.getRefData().getLocalRotation();
-        rot.rot[0]=osg::DegreesToRadians(x);
-        rot.rot[1]=osg::DegreesToRadians(y);
-        rot.rot[2]=osg::DegreesToRadians(z);
-
-        wrap(rot.rot[0]);
-        wrap(rot.rot[1]);
-        wrap(rot.rot[2]);
-
-        ptr.getRefData().setLocalRotation(rot);
-
-        if (ptr.getRefData().getBaseNode() != 0)
-        {
-            mWorldScene->updateObjectLocalRotation(ptr);
-        }
+            mWorldScene->updateObjectRotation(ptr, true);
     }
 
     void World::adjustPosition(const Ptr &ptr, bool force)
@@ -1325,10 +1302,7 @@ namespace MWWorld
 
     void World::rotateObject (const Ptr& ptr,float x,float y,float z, bool adjust)
     {
-        rotateObjectImp(ptr, osg::Vec3f(osg::DegreesToRadians(x),
-                                           osg::DegreesToRadians(y),
-                                           osg::DegreesToRadians(z)),
-                        adjust);
+        rotateObjectImp(ptr, osg::Vec3f(x, y, z), adjust);
     }
 
     MWWorld::Ptr World::safePlaceObject(const MWWorld::Ptr& ptr, MWWorld::CellStore* cell, ESM::Position pos)
@@ -1410,12 +1384,19 @@ namespace MWWorld
             }
             else
             {
-                float oldRot = osg::RadiansToDegrees(it->first.getRefData().getLocalRotation().rot[2]);
-                float diff = duration * 90.f;
-                float targetRot = std::min(std::max(0.f, oldRot + diff * (it->second == 1 ? 1 : -1)), 90.f);
-                localRotateObject(it->first, 0, 0, targetRot);
+                const ESM::Position& objPos = it->first.getRefData().getPosition();
+                float oldRot = objPos.rot[2];
 
-                bool reached = (targetRot == 90.f && it->second) || targetRot == 0.f;
+                float minRot = it->first.getCellRef().getPosition().rot[2];
+                float maxRot = minRot + osg::DegreesToRadians(90.f);
+
+                float diff = duration * osg::DegreesToRadians(90.f);
+                float targetRot = std::min(std::max(minRot, oldRot + diff * (it->second == 1 ? 1 : -1)), maxRot);
+                rotateObject(it->first, objPos.rot[0], objPos.rot[1], targetRot);
+                // the rotation order we want to use
+                mWorldScene->updateObjectRotation(it->first, false);
+
+                bool reached = (targetRot == maxRot && it->second) || targetRot == minRot;
 
                 /// \todo should use convexSweepTest here
                 std::vector<MWWorld::Ptr> collisions = mPhysics->getCollisions(it->first, MWPhysics::CollisionType_Actor, MWPhysics::CollisionType_Actor);
@@ -1432,7 +1413,7 @@ namespace MWWorld
                         }
 
                         // we need to undo the rotation
-                        localRotateObject(it->first, 0, 0, oldRot);
+                        rotateObject(it->first, objPos.rot[0], objPos.rot[1], oldRot);
                         reached = false;
                     }
                 }
@@ -1835,11 +1816,6 @@ namespace MWWorld
             object.getClass().copyToCell(object, *cell, pos);
 
         // Reset some position values that could be uninitialized if this item came from a container
-        LocalRotation localRotation;
-        localRotation.rot[0] = 0;
-        localRotation.rot[1] = 0;
-        localRotation.rot[2] = 0;
-        dropped.getRefData().setLocalRotation(localRotation);
         dropped.getCellRef().setPosition(pos);
         dropped.getCellRef().unsetRefNum();
 
@@ -2111,7 +2087,7 @@ namespace MWWorld
         switch (state)
         {
         case 0:
-            if (door.getRefData().getLocalRotation().rot[2] == 0)
+            if (door.getRefData().getPosition().rot[2] == door.getCellRef().getPosition().rot[2])
                 state = 1; // if closed, then open
             else
                 state = 2; // if open, then close

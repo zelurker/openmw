@@ -1479,6 +1479,8 @@ bool CharacterController::updateWeaponState()
         }
     }
 
+    mAnimation->setAccurateAiming(mUpperBodyState > UpperCharState_WeapEquiped);
+
     return forcestateupdate;
 }
 
@@ -1814,7 +1816,6 @@ void CharacterController::update(float duration)
 
         if (!mSkipAnim)
         {
-            rot *= osg::RadiansToDegrees(1.0f);
             if(mHitState != CharState_KnockDown && mHitState != CharState_KnockOut)
             {
                 world->rotateObject(mPtr, rot.x(), rot.y(), rot.z(), true);

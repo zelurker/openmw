@@ -349,12 +349,11 @@ namespace MWWorld
 
             virtual void scaleObject (const Ptr& ptr, float scale);
 
-            /// World rotates object, uses degrees
+            /// World rotates object, uses radians
+            /// @note Rotations via this method use a different rotation order than the initial rotations in the CS. This
+            /// could be considered a bug, but is needed for MW compatibility.
             /// \param adjust indicates rotation should be set or adjusted
             virtual void rotateObject (const Ptr& ptr,float x,float y,float z, bool adjust = false);
-
-            /// Local rotates object, uses degrees
-            virtual void localRotateObject (const Ptr& ptr, float x, float y, float z);
 
             virtual MWWorld::Ptr safePlaceObject(const MWWorld::Ptr& ptr, MWWorld::CellStore* cell, ESM::Position pos);
             ///< place an object in a "safe" location (ie not in the void, etc). Makes a copy of the Ptr.

@@ -42,13 +42,13 @@ namespace
             rendering.addWaterRippleEmitter(ptr);
     }
 
-    void updateObjectLocalRotation (const MWWorld::Ptr& ptr, MWPhysics::PhysicsSystem& physics,
-                                    MWRender::RenderingManager& rendering,
-				    int prio = 0)
+    void updateObjectRotation (const MWWorld::Ptr& ptr, MWPhysics::PhysicsSystem& physics,
+                                    MWRender::RenderingManager& rendering, bool inverseRotationOrder)
     {
         if (ptr.getRefData().getBaseNode() != NULL)
         {
             osg::Quat worldRotQuat(ptr.getRefData().getPosition().rot[2], osg::Vec3(0,0,-1));
+<<<<<<< HEAD
             if (!ptr.getClass().isActor()) {
 		if (prio)
 		    /* There are 2 ways to handle rotations, the setangle way
@@ -71,8 +71,20 @@ namespace
 		else
 		    rot = rot * osg::Quat(y, osg::Vec3(0,-1,0)) * osg::Quat(x, osg::Vec3(-1,0,0));
 	    }
+=======
+            if (!ptr.getClass().isActor())
+            {
+                float xr = ptr.getRefData().getPosition().rot[0];
+                float yr = ptr.getRefData().getPosition().rot[1];
+                if (!inverseRotationOrder)
+                    worldRotQuat = worldRotQuat * osg::Quat(yr, osg::Vec3(0,-1,0)) *
+                        osg::Quat(xr, osg::Vec3(-1,0,0));
+                else
+                    worldRotQuat = osg::Quat(xr, osg::Vec3(-1,0,0)) * osg::Quat(yr, osg::Vec3(0,-1,0)) * worldRotQuat;
+            }
+>>>>>>> 9e3eb8291fe5bf0e380f057809794d589ee5be5b
 
-            rendering.rotateObject(ptr, rot * worldRotQuat);
+            rendering.rotateObject(ptr, worldRotQuat);
             physics.updateRotation(ptr);
         }
     }
@@ -126,7 +138,7 @@ namespace
             try
             {
                 addObject(ptr, mPhysics, mRendering);
-                updateObjectLocalRotation(ptr, mPhysics, mRendering);
+                updateObjectRotation(ptr, mPhysics, mRendering, false);
                 updateObjectScale(ptr, mPhysics, mRendering);
                 ptr.getClass().adjustPosition (ptr, false);
             }
@@ -147,9 +159,15 @@ namespace
 namespace MWWorld
 {
 
+<<<<<<< HEAD
     void Scene::updateObjectLocalRotation (const Ptr& ptr, int prio)
     {
         ::updateObjectLocalRotation(ptr, *mPhysics, mRendering,prio);
+=======
+    void Scene::updateObjectRotation (const Ptr& ptr, bool inverseRotationOrder)
+    {
+        ::updateObjectRotation(ptr, *mPhysics, mRendering, inverseRotationOrder);
+>>>>>>> 9e3eb8291fe5bf0e380f057809794d589ee5be5b
     }
 
     void Scene::updateObjectScale(const Ptr &ptr)
@@ -431,9 +449,9 @@ namespace MWWorld
         if (adjustPlayerPos) {
             world->moveObject(player, pos.pos[0], pos.pos[1], pos.pos[2]);
 
-            float x = osg::RadiansToDegrees(pos.rot[0]);
-            float y = osg::RadiansToDegrees(pos.rot[1]);
-            float z = osg::RadiansToDegrees(pos.rot[2]);
+            float x = pos.rot[0];
+            float y = pos.rot[1];
+            float z = pos.rot[2];
             world->rotateObject(player, x, y, z);
 
             player.getClass().adjustPosition(player, true);
@@ -488,9 +506,9 @@ namespace MWWorld
             MWBase::World *world = MWBase::Environment::get().getWorld();
             world->moveObject(world->getPlayerPtr(), position.pos[0], position.pos[1], position.pos[2]);
 
-            float x = osg::RadiansToDegrees(position.rot[0]);
-            float y = osg::RadiansToDegrees(position.rot[1]);
-            float z = osg::RadiansToDegrees(position.rot[2]);
+            float x = position.rot[0];
+            float y = position.rot[1];
+            float z = position.rot[2];
             world->rotateObject(world->getPlayerPtr(), x, y, z);
 
             world->getPlayerPtr().getClass().adjustPosition(world->getPlayerPtr(), true);
@@ -568,7 +586,7 @@ namespace MWWorld
         try
         {
             addObject(ptr, *mPhysics, mRendering);
-            MWBase::Environment::get().getWorld()->rotateObject(ptr, 0, 0, 0, true);
+            updateObjectRotation(ptr, false);
             MWBase::Environment::get().getWorld()->scaleObject(ptr, ptr.getCellRef().getScale());
         }
         catch (std::exception& e)
