@@ -314,8 +314,6 @@ namespace MWScript
                     {
                         MWWorld::Ptr base = ptr;
                         ptr = MWBase::Environment::get().getWorld()->moveObject(ptr,store,x,y,z);
-                        MWWorld::Ptr base = ptr;
-
                         dynamic_cast<MWScript::InterpreterContext&>(runtime.getContext()).updatePtr(base,ptr);
 
                         float ax = osg::RadiansToDegrees(ptr.getRefData().getPosition().rot[0]);
