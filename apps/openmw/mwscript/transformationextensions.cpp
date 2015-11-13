@@ -312,6 +312,7 @@ namespace MWScript
                     }
                     if(store)
                     {
+                        MWWorld::Ptr base = ptr;
                         ptr = MWBase::Environment::get().getWorld()->moveObject(ptr,store,x,y,z);
                         MWWorld::Ptr base = ptr;
 
