@@ -6,6 +6,8 @@
 
 #include <osg/ref_ptr>
 
+#include "bulletshape.hpp"
+
 namespace VFS
 {
     class Manager;
@@ -14,10 +16,6 @@ namespace VFS
 namespace Resource
 {
     class SceneManager;
-}
-
-namespace NifBullet
-{
 
     class BulletShape;
     class BulletShapeInstance;
@@ -25,13 +23,14 @@ namespace NifBullet
     class BulletShapeManager
     {
     public:
-        BulletShapeManager(const VFS::Manager* vfs);
+        BulletShapeManager(const VFS::Manager* vfs, SceneManager* sceneMgr);
         ~BulletShapeManager();
 
         osg::ref_ptr<BulletShapeInstance> createInstance(const std::string& name);
 
     private:
         const VFS::Manager* mVFS;
+        SceneManager* mSceneManager;
 
         typedef std::map<std::string, osg::ref_ptr<BulletShape> > Index;
         Index mIndex;
