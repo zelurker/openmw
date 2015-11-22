@@ -10,7 +10,6 @@
 
 #include <osg/Group>
 #include <osg/ComputeBoundsVisitor>
-#include <osg/PositionAttitudeTransform>
 
 #include <components/esm/esmreader.hpp>
 #include <components/esm/esmwriter.hpp>
@@ -21,6 +20,8 @@
 #include <components/files/collections.hpp>
 #include <components/misc/resourcehelpers.hpp>
 #include <components/resource/resourcesystem.hpp>
+
+#include <components/sceneutil/positionattitudetransform.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/soundmanager.hpp"
@@ -2059,11 +2060,10 @@ namespace MWWorld
         if (!actor)
             throw std::runtime_error("can't find player");
 
-        if((!actor->getOnGround()&&actor->getCollisionMode()) || isUnderwater(currentCell, playerPos) || isWalkingOnWater(player))
+        if ((actor->getCollisionMode() && !mPhysics->isOnSolidGround(player)) || isUnderwater(currentCell, playerPos))
             return 2;
 
-        if((currentCell->getCell()->mData.mFlags&ESM::Cell::NoSleep) ||
-           player.getClass().getNpcStats(player).isWerewolf())
+        if((currentCell->getCell()->mData.mFlags&ESM::Cell::NoSleep) || player.getClass().getNpcStats(player).isWerewolf())
             return 1;
 
         return 0;
@@ -2155,6 +2155,8 @@ namespace MWWorld
             health.setCurrent(health.getCurrent()-healthPerSecond*MWBase::Environment::get().getFrameDuration());
             stats.setHealth(health);
 
+            mPhysics->markAsNonSolid (object);
+
             if (healthPerSecond > 0.0f)
             {
                 if (actor == getPlayerPtr())
@@ -2182,6 +2184,8 @@ namespace MWWorld
             MWMechanics::DynamicStat<float> health = stats.getHealth();
             health.setCurrent(health.getCurrent()-healthPerSecond*MWBase::Environment::get().getFrameDuration());
             stats.setHealth(health);
+
+            mPhysics->markAsNonSolid (object);
 
             if (healthPerSecond > 0.0f)
             {
@@ -3249,4 +3253,11 @@ namespace MWWorld
         osg::Vec3f targetPos = mPhysics->getPosition(target);
         return (targetPos - weaponPos);
     }
+
+    float World::getHitDistance(const Ptr &actor, const Ptr &target)
+    {
+        osg::Vec3f weaponPos = getActorHeadPosition(actor, mRendering);
+        return mPhysics->getHitDistance(weaponPos, target);
+    }
+
 }

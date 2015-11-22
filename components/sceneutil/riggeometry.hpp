@@ -48,6 +48,9 @@ namespace SceneUtil
         osg::ref_ptr<osg::Geometry> mSourceGeometry;
         Skeleton* mSkeleton;
 
+        osg::NodePath mSkelToGeomPath;
+        osg::Matrixf mGeomToSkelMatrix;
+
         osg::ref_ptr<InfluenceMap> mInfluenceMap;
 
         typedef std::pair<Bone*, osg::Matrixf> BoneBindMatrixPair;
@@ -69,7 +72,7 @@ namespace SceneUtil
 
         bool initFromParentSkeleton(osg::NodeVisitor* nv);
 
-        osg::Matrixf getGeomToSkelMatrix(osg::NodeVisitor* nv);
+        void updateGeomToSkelMatrix(osg::NodeVisitor* nv);
     };
 
 }

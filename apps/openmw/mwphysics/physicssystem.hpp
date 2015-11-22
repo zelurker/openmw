@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <map>
+#include <set>
 
 #include <osg/Quat>
 #include <osg/ref_ptr>
@@ -81,13 +82,20 @@ namespace MWPhysics
             void stepSimulation(float dt);
             void debugDraw();
 
-            std::vector<MWWorld::Ptr> getCollisions(const MWWorld::Ptr &ptr, int collisionGroup, int collisionMask); ///< get handles this object collides with
+            std::vector<MWWorld::Ptr> getCollisions(const MWWorld::Ptr &ptr, int collisionGroup, int collisionMask) const; ///< get handles this object collides with
             osg::Vec3f traceDown(const MWWorld::Ptr &ptr, float maxHeight);
 
             std::pair<MWWorld::Ptr, osg::Vec3f> getHitContact(const MWWorld::Ptr& actor,
                                                                const osg::Vec3f &origin,
                                                                const osg::Quat &orientation,
                                                                float queryDistance);
+
+
+            /// Get distance from \a point to the collision shape of \a target. Uses a raycast to find where the
+            /// target vector hits the collision shape and then calculates distance from the intersection point.
+            /// This can be used to find out how much nearer we need to move to the target for a "getHitContact" to be successful.
+            /// \note Only Actor targets are supported at the moment.
+            float getHitDistance(const osg::Vec3f& point, const MWWorld::Ptr& target) const;
 
             struct RayResult
             {
@@ -145,6 +153,12 @@ namespace MWPhysics
 
             bool toggleDebugRendering();
 
+            /// Mark the given object as a 'non-solid' object. A non-solid object means that
+            /// \a isOnSolidGround will return false for actors standing on that object.
+            void markAsNonSolid (const MWWorld::Ptr& ptr);
+
+            bool isOnSolidGround (const MWWorld::Ptr& actor) const;
+
         private:
 
             void updateWater();
@@ -159,6 +173,8 @@ namespace MWPhysics
             typedef std::map<MWWorld::Ptr, Object*> ObjectMap;
             ObjectMap mObjects;
 
+            std::set<Object*> mAnimatedObjects; // stores pointers to elements in mObjects
+
             typedef std::map<MWWorld::Ptr, Actor*> ActorMap;
             ActorMap mActors;
 
@@ -167,11 +183,9 @@ namespace MWPhysics
 
             bool mDebugDrawEnabled;
 
-            // Tracks all movement collisions happening during a single frame. <actor handle, collided handle>
-            // This will detect e.g. running against a vertical wall. It will not detect climbing up stairs,
-            // stepping up small objects, etc.
+            // Tracks standing collisions happening during a single frame. <actor handle, collided handle>
+            // This will detect standing on an object, but won't detect running e.g. against a wall.
             typedef std::map<MWWorld::Ptr, MWWorld::Ptr> CollisionMap;
-            CollisionMap mCollisions;
             CollisionMap mStandingCollisions;
 
             // replaces all occurences of 'old' in the map by 'updated', no matter if its a key or value

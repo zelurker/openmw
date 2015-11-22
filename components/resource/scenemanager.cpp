@@ -82,7 +82,7 @@ namespace
             osg::MatrixList mats = node->getWorldMatrices();
             if (mats.empty())
                 return;
-            osg::Matrix worldMat = mats[0];
+            osg::Matrixf worldMat = mats[0];
             worldMat.orthoNormalize(worldMat); // scale is already applied on the particle node
             for (int i=0; i<partsys->numParticles(); ++i)
             {
@@ -206,7 +206,6 @@ namespace Resource
             }
 
             osgDB::Registry::instance()->getOrCreateSharedStateManager()->share(loaded.get());
-            // TODO: run SharedStateManager::prune on unload
 
             if (mIncrementalCompileOperation)
                 mIncrementalCompileOperation->add(loaded);
