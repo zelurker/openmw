@@ -57,7 +57,7 @@ add_openmw_dir (mwscript
     )
 
 add_openmw_dir (mwsound
-    soundmanagerimp openal_output ffmpeg_decoder sound sound_decoder sound_output loudness movieaudiofactory
+    soundmanagerimp openal_output ffmpeg_decoder sound sound_buffer sound_decoder sound_output loudness movieaudiofactory
     )
 
 add_openmw_dir (mwworld
@@ -118,7 +118,13 @@ include_directories(
 )
 
 target_link_libraries(openmw
-    ${OPENSCENEGRAPH_LIBRARIES}
+    ${OSG_LIBRARIES}
+    ${OPENTHREADS_LIBRARIES}
+    ${OSGPARTICLE_LIBRARIES}
+    ${OSGUTIL_LIBRARIES}
+    ${OSGDB_LIBRARIES}
+    ${OSGVIEWER_LIBRARIES}
+    ${OSGGA_LIBRARIES}
     ${Boost_SYSTEM_LIBRARY}
     ${Boost_THREAD_LIBRARY}
     ${Boost_FILESYSTEM_LIBRARY}
@@ -134,15 +140,27 @@ target_link_libraries(openmw
 )
 
 if (ANDROID)
+    set (OSG_PLUGINS
+        -Wl,--whole-archive
+        ${OSG_PLUGINS_DIR}/libosgdb_dds.a
+        ${OSG_PLUGINS_DIR}/libosgdb_bmp.a
+        ${OSG_PLUGINS_DIR}/libosgdb_tga.a
+        ${OSG_PLUGINS_DIR}/libosgdb_gif.a
+        ${OSG_PLUGINS_DIR}/libosgdb_jpeg.a
+        ${OSG_PLUGINS_DIR}/libosgdb_png.a
+        -Wl,--no-whole-archive
+    )
     target_link_libraries(openmw
         EGL
         android
         log
         dl
-        MyGUIEngineStatic
-        cpufeatures
-        BulletCollision
-        LinearMath
+        z
+        ${OPENSCENEGRAPH_LIBRARIES}
+        ${OSG_PLUGINS}
+        jpeg
+        gif
+    	png
     )
 endif (ANDROID)
 

@@ -27,23 +27,26 @@
 
 #include "../mwmechanics/npcstats.hpp"
 
-namespace
+namespace MWClass
 {
-    struct ContainerCustomData : public MWWorld::CustomData
+    class ContainerCustomData : public MWWorld::CustomData
     {
+    public:
         MWWorld::ContainerStore mContainerStore;
 
         virtual MWWorld::CustomData *clone() const;
+
+        virtual ContainerCustomData& asContainerCustomData()
+        {
+            return *this;
+        }
     };
 
     MWWorld::CustomData *ContainerCustomData::clone() const
     {
         return new ContainerCustomData (*this);
     }
-}
 
-namespace MWClass
-{
     std::string Container::getId (const MWWorld::Ptr& ptr) const
     {
         return ptr.get<ESM::Container>()->mBase->mId;
@@ -145,11 +148,11 @@ namespace MWClass
 
         // make key id lowercase
         std::string keyId = ptr.getCellRef().getKey();
-        Misc::StringUtils::toLower(keyId);
+        Misc::StringUtils::lowerCaseInPlace(keyId);
         for (MWWorld::ContainerStoreIterator it = invStore.begin(); it != invStore.end(); ++it)
         {
             std::string refId = it->getCellRef().getRefId();
-            Misc::StringUtils::toLower(refId);
+            Misc::StringUtils::lowerCaseInPlace(refId);
             if (refId == keyId)
             {
                 hasKey = true;
@@ -202,7 +205,7 @@ namespace MWClass
     {
         ensureCustomData (ptr);
 
-        return dynamic_cast<ContainerCustomData&> (*ptr.getRefData().getCustomData()).mContainerStore;
+        return ptr.getRefData().getCustomData()->asContainerCustomData().mContainerStore;
     }
 
     std::string Container::getScript (const MWWorld::Ptr& ptr) const

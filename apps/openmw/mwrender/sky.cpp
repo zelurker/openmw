@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include <osg/ClipPlane>
+#include <osg/Fog>
 #include <osg/Transform>
 #include <osg/Geode>
 #include <osg/Depth>
@@ -1550,11 +1552,13 @@ void SkyManager::setWeather(const WeatherResult& weather)
     {
         mNextClouds = weather.mNextCloudTexture;
 
-        std::string texture = Misc::ResourceHelpers::correctTexturePath(mNextClouds, mSceneManager->getVFS());
+        if (!mNextClouds.empty())
+        {
+            std::string texture = Misc::ResourceHelpers::correctTexturePath(mNextClouds, mSceneManager->getVFS());
 
-        if (!texture.empty())
             mCloudUpdater2->setTexture(mSceneManager->getTextureManager()->getTexture2D(texture,
                                                                                        osg::Texture::REPEAT, osg::Texture::REPEAT));
+        }
     }
 
     if (mCloudBlendFactor != weather.mCloudBlendFactor)

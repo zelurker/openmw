@@ -100,7 +100,7 @@ namespace
 
         virtual void traverse(osg::NodeVisitor& nv)
         {
-            if (nv.getTraversalMode() != osg::NodeVisitor::TRAVERSE_ACTIVE_CHILDREN)
+            if (nv.getTraversalMode() != osg::NodeVisitor::TRAVERSE_ACTIVE_CHILDREN && nv.getVisitorType() != osg::NodeVisitor::UPDATE_VISITOR)
                 osg::Group::traverse(nv);
             else
             {
@@ -113,7 +113,7 @@ namespace
         }
     };
 
-    // NodeCallback used to have a transform always oriented towards the camera. Can have translation and scale
+    // NodeCallback used to have a node always oriented towards the camera. The node can have translation and scale
     // set just like a regular MatrixTransform, but the rotation set will be overridden in order to face the camera.
     // Must be set as a cull callback.
     class BillboardCallback : public osg::NodeCallback
@@ -132,8 +132,7 @@ namespace
         virtual void operator()(osg::Node* node, osg::NodeVisitor* nv)
         {
             osgUtil::CullVisitor* cv = dynamic_cast<osgUtil::CullVisitor*>(nv);
-            osg::MatrixTransform* billboardNode = dynamic_cast<osg::MatrixTransform*>(node);
-            if (billboardNode && cv)
+            if (node && cv)
             {
                 osg::Matrix modelView = *cv->getModelViewMatrix();
 
@@ -255,7 +254,7 @@ namespace
                     nextpos = std::distance(str.begin(), ++last);
                 }
                 std::string result = str.substr(pos, nextpos-pos);
-                textkeys.insert(std::make_pair(tk->list[i].time, Misc::StringUtils::toLower(result)));
+                textkeys.insert(std::make_pair(tk->list[i].time, Misc::StringUtils::lowerCase(result)));
 
                 pos = nextpos;
             }

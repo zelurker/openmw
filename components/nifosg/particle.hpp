@@ -30,7 +30,7 @@ namespace NifOsg
         ParticleSystem();
         ParticleSystem(const ParticleSystem& copy, const osg::CopyOp& copyop);
 
-        META_Object(NifOsg, NifOsg::ParticleSystem)
+        META_Object(NifOsg, ParticleSystem)
 
         virtual osgParticle::Particle* createParticle(const osgParticle::Particle *ptemplate);
 
@@ -130,7 +130,8 @@ namespace NifOsg
         float mCachedDefaultSize;
     };
 
-    class ParticleColorAffector : public osgParticle::Operator, public ValueInterpolator
+    typedef ValueInterpolator<Nif::Vector4KeyMap, LerpFunc> Vec4Interpolator;
+    class ParticleColorAffector : public osgParticle::Operator
     {
     public:
         ParticleColorAffector(const Nif::NiColorData* clrdata);
@@ -142,7 +143,7 @@ namespace NifOsg
         virtual void operate(osgParticle::Particle* particle, double dt);
 
     private:
-        Nif::NiColorData mData;
+        Vec4Interpolator mData;
     };
 
     class GravityAffector : public osgParticle::Operator
@@ -193,7 +194,7 @@ namespace NifOsg
         Emitter();
         Emitter(const Emitter& copy, const osg::CopyOp& copyop);
 
-        META_Object(NifOsg, NifOsg::Emitter)
+        META_Object(NifOsg, Emitter)
 
         virtual void emitParticles(double dt);
 

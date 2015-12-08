@@ -288,7 +288,9 @@ namespace MWGui
         trackWindow(mStatsWindow, "stats");
         mConsole = new Console(w,h, mConsoleOnlyScripts);
         trackWindow(mConsole, "console");
-        mJournal = JournalWindow::create(JournalViewModel::create ());
+
+        bool questList = mResourceSystem->getVFS()->exists("textures/tx_menubook_options_over.dds");
+        mJournal = JournalWindow::create(JournalViewModel::create (), questList);
         mMessageBoxManager = new MessageBoxManager(
                     MWBase::Environment::get().getWorld()->getStore().get<ESM::GameSetting>().find("fMessageTimePerChar")->getFloat());
         mInventoryWindow = new InventoryWindow(mDragAndDrop, mViewer, mResourceSystem);
@@ -324,14 +326,22 @@ namespace MWGui
         trackWindow(mCompanionWindow, "companion");
         mJailScreen = new JailScreen();
 
-        mWerewolfFader = new ScreenFader("textures\\werewolfoverlay.dds");
+        std::string werewolfFaderTex = "textures\\werewolfoverlay.dds";
+        if (mResourceSystem->getVFS()->exists(werewolfFaderTex))
+            mWerewolfFader = new ScreenFader(werewolfFaderTex);
         mBlindnessFader = new ScreenFader("black");
-        std::string hitFaderTexture = "textures\\bm_player_hit_01.dds";
+
         // fall back to player_hit_01.dds if bm_player_hit_01.dds is not available
-        // TODO: check if non-BM versions actually use player_hit_01.dds
+        std::string hitFaderTexture = "textures\\bm_player_hit_01.dds";
+        const std::string hitFaderLayout = "openmw_screen_fader_hit.layout";
+        MyGUI::FloatCoord hitFaderCoord (0,0,1,1);
         if(!mResourceSystem->getVFS()->exists(hitFaderTexture))
+        {
             hitFaderTexture = "textures\\player_hit_01.dds";
-        mHitFader = new ScreenFader(hitFaderTexture, "openmw_screen_fader_hit.layout");
+            hitFaderCoord = MyGUI::FloatCoord(0.2, 0.25, 0.6, 0.5);
+        }
+        mHitFader = new ScreenFader(hitFaderTexture, hitFaderLayout, hitFaderCoord);
+
         mScreenFader = new ScreenFader("black");
 
         mDebugWindow = new DebugWindow();
@@ -984,7 +994,8 @@ namespace MWGui
         mCompanionWindow->onFrame();
         mJailScreen->onFrame(frameDuration);
 
-        mWerewolfFader->update(frameDuration);
+        if (mWerewolfFader)
+            mWerewolfFader->update(frameDuration);
         mBlindnessFader->update(frameDuration);
         mHitFader->update(frameDuration);
         mScreenFader->update(frameDuration);
@@ -1878,7 +1889,8 @@ namespace MWGui
         if (!mWerewolfOverlayEnabled)
             return;
 
-        mWerewolfFader->notifyAlphaChanged(set ? 1.0f : 0.0f);
+        if (mWerewolfFader)
+            mWerewolfFader->notifyAlphaChanged(set ? 1.0f : 0.0f);
     }
 
     void WindowManager::onClipboardChanged(const std::string &_type, const std::string &_data)

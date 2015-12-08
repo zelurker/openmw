@@ -158,6 +158,9 @@ Weather::Weather(const std::string& name,
     else
         mAmbientLoopSoundID = fallback.getFallbackString("Weather_" + name + "_Ambient_Loop_Sound_ID");
 
+    if (Misc::StringUtils::ciEqual(mAmbientLoopSoundID, "None"))
+        mAmbientLoopSoundID.clear();
+
     /*
     Unhandled:
     Rain Diameter=600 ?
@@ -624,7 +627,7 @@ void WeatherManager::update(float duration, bool paused)
     MWBase::World& world = *MWBase::Environment::get().getWorld();
     TimeStamp time = world.getTimeStamp();
 
-    if(!paused)
+    if(!paused || mFastForward)
     {
         // Add new transitions when either the player's current external region changes.
         std::string playerRegion = Misc::StringUtils::lowerCase(player.getCell()->getCell()->mRegion);
@@ -735,11 +738,9 @@ void WeatherManager::update(float duration, bool paused)
 void WeatherManager::stopSounds()
 {
     if (mAmbientSound.get())
-    {
         MWBase::Environment::get().getSoundManager()->stopSound(mAmbientSound);
-        mAmbientSound.reset();
-        mPlayingSoundID.clear();
-    }
+    mAmbientSound.reset();
+    mPlayingSoundID.clear();
 }
 
 float WeatherManager::getWindSpeed() const

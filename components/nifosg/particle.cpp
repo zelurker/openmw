@@ -23,7 +23,7 @@ ParticleSystem::ParticleSystem(const ParticleSystem &copy, const osg::CopyOp &co
 {
     // For some reason the osgParticle constructor doesn't copy the particles
     for (int i=0;i<copy.numParticles()-copy.numDeadParticles();++i)
-        _particles.push_back(*copy.getParticle(i));
+        createParticle(copy.getParticle(i));
 }
 
 void ParticleSystem::setQuota(int quota)
@@ -127,7 +127,7 @@ void GrowFadeAffector::operate(osgParticle::Particle* particle, double /* dt */)
 }
 
 ParticleColorAffector::ParticleColorAffector(const Nif::NiColorData *clrdata)
-    : mData(*clrdata)
+    : mData(clrdata->mKeyMap, osg::Vec4f(1,1,1,1))
 {
 }
 
@@ -145,7 +145,7 @@ ParticleColorAffector::ParticleColorAffector(const ParticleColorAffector &copy, 
 void ParticleColorAffector::operate(osgParticle::Particle* particle, double /* dt */)
 {
     float time = static_cast<float>(particle->getAge()/particle->getLifeTime());
-    osg::Vec4f color = interpKey(mData.mKeyMap->mKeys, time, osg::Vec4f(1,1,1,1));
+    osg::Vec4f color = mData.interpKey(time);
 
     particle->setColorRange(osgParticle::rangev4(color, color));
 }

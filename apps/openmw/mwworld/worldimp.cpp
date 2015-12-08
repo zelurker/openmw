@@ -138,8 +138,7 @@ namespace MWWorld
     {
         if (mSky && (isCellExterior() || isCellQuasiExterior()))
         {
-            mRendering->skySetDate (mGlobalVariables["day"].getInteger(),
-                mGlobalVariables["month"].getInteger());
+            mRendering->skySetDate (mDay->getInteger(), mMonth->getInteger());
 
             mRendering->setSkyEnabled(true);
         }
@@ -164,8 +163,8 @@ namespace MWWorld
       mLevitationEnabled(true), mGoToJail(false), mDaysInPrison(0)
     {
         mPhysics = new MWPhysics::PhysicsSystem(resourceSystem, rootNode);
-        mProjectileManager.reset(new ProjectileManager(rootNode, resourceSystem, mPhysics));
         mRendering = new MWRender::RenderingManager(viewer, rootNode, resourceSystem, &mFallback, resourcePath);
+        mProjectileManager.reset(new ProjectileManager(mRendering->getLightRoot(), resourceSystem, mRendering, mPhysics));
 
         mEsm.resize(contentFiles.size());
         Loading::Listener* listener = MWBase::Environment::get().getWindowManager()->getLoadingScreen();
@@ -188,16 +187,28 @@ namespace MWWorld
         if (mEsm[0].getFormat() == 0)
             ensureNeededRecords();
 
+        fillGlobalVariables();
+
         mStore.setUp();
         mStore.movePlayerRecord();
 
         mSwimHeightScale = mStore.get<ESM::GameSetting>().find("fSwimHeightScale")->getFloat();
 
-        mGlobalVariables.fill (mStore);
-
         mWeatherManager = new MWWorld::WeatherManager(*mRendering, mFallback, mStore);
 
         mWorldScene = new Scene(*mRendering, mPhysics);
+    }
+
+    void World::fillGlobalVariables()
+    {
+        mGlobalVariables.fill (mStore);
+
+        mGameHour = &mGlobalVariables["gamehour"];
+        mDaysPassed = &mGlobalVariables["dayspassed"];
+        mDay = &mGlobalVariables["day"];
+        mMonth = &mGlobalVariables["month"];
+        mYear = &mGlobalVariables["year"];
+        mTimeScale = &mGlobalVariables["timescale"];
     }
 
     void World::startNewGame (bool bypass)
@@ -306,7 +317,7 @@ namespace MWWorld
         mTeleportEnabled = true;
         mLevitationEnabled = true;
 
-        mGlobalVariables.fill (mStore);
+        fillGlobalVariables();
     }
 
     int World::countSavedGameRecords() const
@@ -798,15 +809,15 @@ namespace MWWorld
 
         mWeatherManager->advanceTime (hours, incremental);
 
-        hours += mGlobalVariables["gamehour"].getFloat();
+        hours += mGameHour->getFloat();
 
         setHour (hours);
 
         int days = static_cast<int>(hours / 24);
 
         if (days>0)
-            mGlobalVariables["dayspassed"].setInteger (
-                days + mGlobalVariables["dayspassed"].getInteger());
+            mDaysPassed->setInteger (
+                days + mDaysPassed->getInteger());
     }
 
     void World::setHour (double hour)
@@ -818,10 +829,10 @@ namespace MWWorld
 
         hour = std::fmod (hour, 24);
 
-        mGlobalVariables["gamehour"].setFloat(static_cast<float>(hour));
+        mGameHour->setFloat(static_cast<float>(hour));
 
         if (days>0)
-            setDay (days + mGlobalVariables["day"].getInteger());
+            setDay (days + mDay->getInteger());
     }
 
     void World::setDay (int day)
@@ -829,7 +840,7 @@ namespace MWWorld
         if (day<1)
             day = 1;
 
-        int month = mGlobalVariables["month"].getInteger();
+        int month = mMonth->getInteger();
 
         while (true)
         {
@@ -844,14 +855,14 @@ namespace MWWorld
             else
             {
                 month = 0;
-                mGlobalVariables["year"].setInteger (mGlobalVariables["year"].getInteger()+1);
+                mYear->setInteger(mYear->getInteger()+1);
             }
 
             day -= days;
         }
 
-        mGlobalVariables["day"].setInteger (day);
-        mGlobalVariables["month"].setInteger (month);
+        mDay->setInteger(day);
+        mMonth->setInteger(month);
 
         mRendering->skySetDate(day, month);
     }
@@ -866,30 +877,30 @@ namespace MWWorld
 
         int days = getDaysPerMonth (month);
 
-        if (mGlobalVariables["day"].getInteger()>days)
-            mGlobalVariables["day"].setInteger (days);
+        if (mDay->getInteger()>days)
+            mDay->setInteger (days);
 
-        mGlobalVariables["month"].setInteger (month);
+        mMonth->setInteger (month);
 
         if (years>0)
-            mGlobalVariables["year"].setInteger (years+mGlobalVariables["year"].getInteger());
+            mYear->setInteger (years+mYear->getInteger());
 
-        mRendering->skySetDate (mGlobalVariables["day"].getInteger(), month);
+        mRendering->skySetDate (mDay->getInteger(), month);
     }
 
     int World::getDay() const
     {
-        return mGlobalVariables["day"].getInteger();
+        return mDay->getInteger();
     }
 
     int World::getMonth() const
     {
-        return mGlobalVariables["month"].getInteger();
+        return mMonth->getInteger();
     }
 
     int World::getYear() const
     {
-        return mGlobalVariables["year"].getInteger();
+        return mYear->getInteger();
     }
 
     std::string World::getMonthName (int month) const
@@ -914,8 +925,7 @@ namespace MWWorld
 
     TimeStamp World::getTimeStamp() const
     {
-        return TimeStamp (mGlobalVariables["gamehour"].getFloat(),
-            mGlobalVariables["dayspassed"].getInteger());
+        return TimeStamp (mGameHour->getFloat(), mDaysPassed->getInteger());
     }
 
     bool World::toggleSky()
@@ -942,7 +952,7 @@ namespace MWWorld
 
     float World::getTimeScaleFactor() const
     {
-        return mGlobalVariables["timescale"].getFloat();
+        return mTimeScale->getFloat();
     }
 
     void World::changeToInteriorCell (const std::string& cellName, const ESM::Position& position)
@@ -999,7 +1009,8 @@ namespace MWWorld
         if (mActivationDistanceOverride >= 0)
             return static_cast<float>(mActivationDistanceOverride);
 
-        return getStore().get<ESM::GameSetting>().find("iMaxActivateDist")->getFloat() * 5 / 4;
+        static const int iMaxActivateDist = getStore().get<ESM::GameSetting>().find("iMaxActivateDist")->getInt();
+        return iMaxActivateDist * 5.f / 4.f;
     }
 
     MWWorld::Ptr World::getFacedObject()
@@ -1554,8 +1565,20 @@ namespace MWWorld
             mPlayer->setLastKnownExteriorPosition(pos.asVec3());
         }
 
-        if (player.getClass().getNpcStats(player).isWerewolf())
-            MWBase::Environment::get().getWindowManager()->setWerewolfOverlay(mRendering->getCamera()->isFirstPerson());
+        bool isWerewolf = player.getClass().getNpcStats(player).isWerewolf();
+        bool isFirstPerson = mRendering->getCamera()->isFirstPerson();
+        if (isWerewolf && isFirstPerson)
+        {
+            float werewolfFov = mFallback.getFallbackFloat("General_Werewolf_FOV");
+            if (werewolfFov != 0)
+                mRendering->overrideFieldOfView(werewolfFov);
+            MWBase::Environment::get().getWindowManager()->setWerewolfOverlay(true);
+        }
+        else
+        {
+            mRendering->resetFieldOfView();
+            MWBase::Environment::get().getWindowManager()->setWerewolfOverlay(false);
+        }
 
         // Sink the camera while sneaking
         bool sneaking = player.getClass().getCreatureStats(getPlayerPtr()).getStance(MWMechanics::CreatureStats::Stance_Sneak);
@@ -1590,18 +1613,23 @@ namespace MWWorld
     void World::updateSoundListener()
     {
         const ESM::Position& refpos = getPlayerPtr().getRefData().getPosition();
-        osg::Vec3f playerPos = refpos.asVec3();
+        osg::Vec3f listenerPos;
 
-        playerPos.z() += 1.85f * mPhysics->getHalfExtents(getPlayerPtr()).z();
+        if (isFirstPerson())
+            listenerPos = mRendering->getCameraPosition();
+        else
+            listenerPos = refpos.asVec3() + osg::Vec3f(0, 0, 1.85f * mPhysics->getHalfExtents(getPlayerPtr()).z());
 
-        osg::Quat playerOrient = osg::Quat(refpos.rot[1], osg::Vec3f(0,-1,0)) *
+        osg::Quat listenerOrient = osg::Quat(refpos.rot[1], osg::Vec3f(0,-1,0)) *
                 osg::Quat(refpos.rot[0], osg::Vec3f(-1,0,0)) *
                 osg::Quat(refpos.rot[2], osg::Vec3f(0,0,-1));
 
-        osg::Vec3f forward = playerOrient * osg::Vec3f(0,1,0);
-        osg::Vec3f up = playerOrient * osg::Vec3f(0,0,1);
+        osg::Vec3f forward = listenerOrient * osg::Vec3f(0,1,0);
+        osg::Vec3f up = listenerOrient * osg::Vec3f(0,0,1);
 
-        MWBase::Environment::get().getSoundManager()->setListenerPosDir(playerPos, forward, up);
+        bool underwater = isUnderwater(getPlayerPtr().getCell(), listenerPos);
+
+        MWBase::Environment::get().getSoundManager()->setListenerPosDir(listenerPos, forward, up, underwater);
     }
 
     void World::updateWindowManager ()
@@ -2270,7 +2298,7 @@ namespace MWWorld
     {
         if (!targetActor.getRefData().isEnabled() || !actor.getRefData().isEnabled())
             return false; // cannot get LOS unless both NPC's are enabled
-        if (!targetActor.getRefData().getBaseNode() || !targetActor.getRefData().getBaseNode())
+        if (!targetActor.getRefData().getBaseNode() || !actor.getRefData().getBaseNode())
             return false; // not in active cell
 
         return mPhysics->getLineOfSight(actor, targetActor);
@@ -2571,7 +2599,7 @@ namespace MWWorld
             }
 
             // If this is a power, check if it was already used in the last 24h
-            if (!fail && spell->mData.mType == ESM::Spell::ST_Power && !stats.getSpells().canUsePower(spell->mId))
+            if (!fail && spell->mData.mType == ESM::Spell::ST_Power && !stats.getSpells().canUsePower(spell))
             {
                 message = "#{sPowerAlreadyUsed}";
                 fail = true;
@@ -3154,9 +3182,9 @@ namespace MWWorld
             {
                 MWBase::SoundManager *sndMgr = MWBase::Environment::get().getSoundManager();
                 if(!effect->mAreaSound.empty())
-                    sndMgr->playManualSound3D(origin, effect->mAreaSound, 1.0f, 1.0f, MWBase::SoundManager::Play_TypeSfx, MWBase::SoundManager::Play_NoTrack);
+                    sndMgr->playSound3D(origin, effect->mAreaSound, 1.0f, 1.0f);
                 else
-                    sndMgr->playManualSound3D(origin, schools[effect->mData.mSchool]+" area", 1.0f, 1.0f, MWBase::SoundManager::Play_TypeSfx, MWBase::SoundManager::Play_NoTrack);
+                    sndMgr->playSound3D(origin, schools[effect->mData.mSchool]+" area", 1.0f, 1.0f);
             }
             // Get the actors in range of the effect
             std::vector<MWWorld::Ptr> objects;

@@ -3,8 +3,9 @@ project(OpenMW)
 # If the user doesn't supply a CMAKE_BUILD_TYPE via command line, choose one for them.
 IF(NOT CMAKE_BUILD_TYPE)
     SET(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING
-        "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel."
+        "Choose the type of build, options are: None(CMAKE_CXX_FLAGS or CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel."
         FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS None Debug Release RelWithDebInfo MinSizeRel)
 ENDIF()
 
 if (APPLE)
@@ -45,10 +46,6 @@ endif(EXISTS ${PROJECT_SOURCE_DIR}/.git)
 # Macros
 include(OpenMWMacros)
 
-if (ANDROID)
-    set(CMAKE_FIND_ROOT_PATH ${OPENMW_DEPENDENCIES_DIR} "${CMAKE_FIND_ROOT_PATH}")
-endif (ANDROID)
-
 # doxygen main page
 
 configure_file ("${OpenMW_SOURCE_DIR}/docs/mainpage.hpp.cmake" "${OpenMW_BINARY_DIR}/docs/mainpage.hpp")
@@ -83,13 +80,28 @@ if (MSVC)
     option(OPENMW_LTO_BUILD "Build OpenMW with Link-Time Optimization (Needs ~2GB of RAM)" OFF)
 endif()
 
-# Location of morrowind data files
+# Set up common paths
 if (APPLE)
     set(MORROWIND_DATA_FILES "./data" CACHE PATH "location of Morrowind data files")
     set(OPENMW_RESOURCE_FILES "./resources" CACHE PATH "location of OpenMW resources files")
 elseif(UNIX)
-    set(MORROWIND_DATA_FILES "${CMAKE_INSTALL_PREFIX}/share/games/openmw/data/" CACHE PATH "location of Morrowind data files")
-    set(OPENMW_RESOURCE_FILES "${CMAKE_INSTALL_PREFIX}/share/games/openmw/resources/" CACHE PATH "location of OpenMW resources files")
+    # Paths
+    SET(BINDIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Where to install binaries")
+    SET(LIBDIR "${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}" CACHE PATH "Where to install libraries")
+    SET(DATAROOTDIR "${CMAKE_INSTALL_PREFIX}/share" CACHE PATH "Sets the root of data directories to a non-default location")
+    SET(GLOBAL_DATA_PATH "${DATAROOTDIR}/games/" CACHE PATH "Set data path prefix")
+    SET(DATADIR "${GLOBAL_DATA_PATH}/openmw" CACHE PATH "Sets the openmw data directories to a non-default location")
+    SET(ICONDIR "${DATAROOTDIR}/pixmaps" CACHE PATH "Set icon dir")
+    SET(LICDIR "${DATAROOTDIR}/licenses/openmw" CACHE PATH "Sets the openmw license directory to a non-default location.")
+    IF("${CMAKE_INSTALL_PREFIX}" STREQUAL "/usr")
+        SET(GLOBAL_CONFIG_PATH "/etc/" CACHE PATH "Set config dir prefix")
+    ELSE()
+        SET(GLOBAL_CONFIG_PATH "${CMAKE_INSTALL_PREFIX}/etc/" CACHE PATH "Set config dir prefix")
+    ENDIF()
+    SET(SYSCONFDIR "${GLOBAL_CONFIG_PATH}/openmw" CACHE PATH "Set config dir")
+
+    set(MORROWIND_DATA_FILES "${DATADIR}/data" CACHE PATH "location of Morrowind data files")
+    set(OPENMW_RESOURCE_FILES "${DATADIR}/resources" CACHE PATH "location of OpenMW resources files")
 else()
     set(MORROWIND_DATA_FILES "data" CACHE PATH "location of Morrowind data files")
     set(OPENMW_RESOURCE_FILES "resources" CACHE PATH "location of OpenMW resources files")
@@ -144,20 +156,39 @@ if (WIN32)
     add_definitions(-DNOMINMAX -DWIN32_LEAN_AND_MEAN)
 endif()
 
-# Dependencies
+if (ANDROID)
+    set(CMAKE_FIND_ROOT_PATH ${OPENMW_DEPENDENCIES_DIR} "${CMAKE_FIND_ROOT_PATH}")
+    set(OPENGL_ES TRUE CACHE BOOL "enable opengl es support for android" FORCE)
+endif (ANDROID)
 
-set(DESIRED_QT_VERSION 4 CACHE STRING "The QT version OpenMW should use (4 or 5)")
-message(STATUS "Using Qt${DESIRED_QT_VERSION}")
+option(OPENGL_ES "enable opengl es support" FALSE )
 
-if (DESIRED_QT_VERSION MATCHES 4)
-    find_package(Qt4 REQUIRED COMPONENTS QtCore QtGui QtNetwork QtOpenGL)
+if (OPENGL_ES)
+    add_definitions(-DOPENGL_ES)
+endif(OPENGL_ES)
+
+if (NOT BUILD_LAUNCHER AND NOT BUILD_OPENCS AND NOT BUILD_WIZARD)
+   set(USE_QT FALSE)
 else()
-    find_package(Qt5Widgets REQUIRED)
-    find_package(Qt5Core REQUIRED)
-    find_package(Qt5Network REQUIRED)
-    find_package(Qt5OpenGL REQUIRED)
+   set(USE_QT TRUE)
+endif()
+ 
+# Dependencies
+if (USE_QT)
+    set(DESIRED_QT_VERSION 4 CACHE STRING "The QT version OpenMW should use (4 or 5)")
+    set_property(CACHE DESIRED_QT_VERSION PROPERTY STRINGS 4 5)
+    message(STATUS "Using Qt${DESIRED_QT_VERSION}")
+
+    if (DESIRED_QT_VERSION MATCHES 4)
+        find_package(Qt4 REQUIRED COMPONENTS QtCore QtGui QtNetwork QtOpenGL)
+    else()
+        find_package(Qt5Widgets REQUIRED)
+        find_package(Qt5Core REQUIRED)
+        find_package(Qt5Network REQUIRED)
+        find_package(Qt5OpenGL REQUIRED)
     # Instruct CMake to run moc automatically when needed.
     #set(CMAKE_AUTOMOC ON)
+    endif()
 endif()
 
 # Fix for not visible pthreads functions for linker with glibc 2.15
@@ -189,7 +220,12 @@ IF(BOOST_STATIC)
     set(Boost_USE_STATIC_LIBS   ON)
 endif()
 
-find_package(OpenSceneGraph 3.2.0 REQUIRED osgDB osgViewer osgText osgGA osgAnimation osgParticle osgQt osgUtil osgFX)
+if (USE_QT)
+    set (OSG_QT osgQt)
+endif()
+
+find_package(OpenSceneGraph 3.2.0 REQUIRED osgDB osgViewer osgText osgGA osgAnimation osgParticle ${OSG_QT} osgUtil osgFX)
+
 include_directories(${OPENSCENEGRAPH_INCLUDE_DIRS})
 
 if(OSG_STATIC)
@@ -361,21 +397,7 @@ elseif (MSVC)
 endif (CMAKE_CXX_COMPILER_ID STREQUAL GNU OR CMAKE_CXX_COMPILER_ID STREQUAL Clang)
 
 IF(NOT WIN32 AND NOT APPLE)
-    # Linux building
-    # Paths
-    SET(BINDIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Where to install binaries")
-    SET(LIBDIR "${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}" CACHE PATH "Where to install libraries")
-    SET(DATAROOTDIR "${CMAKE_INSTALL_PREFIX}/share" CACHE PATH "Sets the root of data directories to a non-default location")
-    SET(GLOBAL_DATA_PATH "${DATAROOTDIR}/games/" CACHE PATH "Set data path prefix")
-    SET(DATADIR "${GLOBAL_DATA_PATH}/openmw" CACHE PATH "Sets the openmw data directories to a non-default location")
-    SET(ICONDIR "${DATAROOTDIR}/pixmaps" CACHE PATH "Set icon dir")
-    SET(LICDIR "${DATAROOTDIR}/licenses/openmw" CACHE PATH "Sets the openmw license directory to a non-default location.")
-    IF("${CMAKE_INSTALL_PREFIX}" STREQUAL "/usr")
-        SET(GLOBAL_CONFIG_PATH "/etc/" CACHE PATH "Set config dir prefix")
-    ELSE()
-        SET(GLOBAL_CONFIG_PATH "${CMAKE_INSTALL_PREFIX}/etc/" CACHE PATH "Set config dir prefix")
-    ENDIF()
-    SET(SYSCONFDIR "${GLOBAL_CONFIG_PATH}/openmw" CACHE PATH "Set config dir")
+    # Linux installation
 
     # Install binaries
     IF(BUILD_OPENMW)
@@ -746,9 +768,10 @@ if (APPLE)
 
     set(ABSOLUTE_PLUGINS "")
     set(USED_OSG_PLUGINS
-                        osgdb_tga
                         osgdb_dds
-                        osgdb_imageio
+                        osgdb_jpeg
+                        osgdb_png
+                        osgdb_tga
                       )
 
     foreach (PLUGIN_NAME ${USED_OSG_PLUGINS})

@@ -117,12 +117,11 @@ namespace MWGui
 
     bool MessageBoxManager::createInteractiveMessageBox (const std::string& message, const std::vector<std::string>& buttons)
     {
-
-        if(mInterMessageBoxe != NULL) {
-	    // Yorick's ring comes here, I guess it's because the script is
-	    // executed more than once, but anyway just deleting the old
-	    // box allows it to run
-	    delete mInterMessageBoxe;
+        if (mInterMessageBoxe != NULL)
+        {
+            std::cerr << "Warning: replacing an interactive message box that was not answered yet" << std::endl;
+            delete mInterMessageBoxe;
+            mInterMessageBoxe = NULL;
         }
 
         mInterMessageBoxe = new InteractiveMessageBox(*this, message, buttons);

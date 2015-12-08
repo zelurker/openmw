@@ -28,23 +28,26 @@
 
 #include "../mwmechanics/actorutil.hpp"
 
-namespace
+namespace MWClass
 {
-    struct DoorCustomData : public MWWorld::CustomData
+    class DoorCustomData : public MWWorld::CustomData
     {
+    public:
         int mDoorState; // 0 = nothing, 1 = opening, 2 = closing
 
         virtual MWWorld::CustomData *clone() const;
+
+        virtual DoorCustomData& asDoorCustomData()
+        {
+            return *this;
+        }
     };
 
     MWWorld::CustomData *DoorCustomData::clone() const
     {
         return new DoorCustomData (*this);
     }
-}
 
-namespace MWClass
-{
     std::string Door::getId (const MWWorld::Ptr& ptr) const
     {
         return ptr.get<ESM::Door>()->mBase->mId;
@@ -65,7 +68,7 @@ namespace MWClass
         // Resume the door's opening/closing animation if it wasn't finished
         if (ptr.getRefData().getCustomData())
         {
-            const DoorCustomData& customData = dynamic_cast<const DoorCustomData&>(*ptr.getRefData().getCustomData());
+            const DoorCustomData& customData = ptr.getRefData().getCustomData()->asDoorCustomData();
             if (customData.mDoorState > 0)
             {
                 MWBase::Environment::get().getWorld()->activateDoor(ptr, customData.mDoorState);
@@ -114,11 +117,11 @@ namespace MWClass
 
         // make key id lowercase
         std::string keyId = ptr.getCellRef().getKey();
-        Misc::StringUtils::toLower(keyId);
+        Misc::StringUtils::lowerCaseInPlace(keyId);
         for (MWWorld::ContainerStoreIterator it = invStore.begin(); it != invStore.end(); ++it)
         {
             std::string refId = it->getCellRef().getRefId();
-            Misc::StringUtils::toLower(refId);
+            Misc::StringUtils::lowerCaseInPlace(refId);
             if (refId == keyId)
             {
                 hasKey = true;
@@ -169,7 +172,9 @@ namespace MWClass
                 {
                     MWBase::Environment::get().getSoundManager()->fadeOutSound3D(ptr,
                             closeSound, 0.5f);
-                    float offset = doorRot/ 3.14159265f * 2.0f;
+                    // Doors rotate at 90 degrees per second, so start the sound at
+                    // where it would be at the current rotation.
+                    float offset = doorRot/(3.14159265f * 0.5f);
                     action->setSoundOffset(offset);
                     action->setSound(openSound);
                 }
@@ -177,10 +182,8 @@ namespace MWClass
                 {
                     MWBase::Environment::get().getSoundManager()->fadeOutSound3D(ptr,
                                                 openSound, 0.5f);
-                    float offset = 1.0f - doorRot/ 3.14159265f * 2.0f;
-                    //most if not all door have closing bang somewhere in the middle of the sound,
-                    //so we divide offset by two
-                    action->setSoundOffset(offset * 0.5f);
+                    float offset = 1.0f - doorRot/(3.14159265f * 0.5f);
+                    action->setSoundOffset(std::max(offset, 0.0f));
                     action->setSound(closeSound);
                 }
 
@@ -324,7 +327,7 @@ namespace MWClass
     int Door::getDoorState (const MWWorld::Ptr &ptr) const
     {
         ensureCustomData(ptr);
-        const DoorCustomData& customData = dynamic_cast<const DoorCustomData&>(*ptr.getRefData().getCustomData());
+        const DoorCustomData& customData = ptr.getRefData().getCustomData()->asDoorCustomData();
         return customData.mDoorState;
     }
 
@@ -334,14 +337,14 @@ namespace MWClass
             throw std::runtime_error("load doors can't be moved");
 
         ensureCustomData(ptr);
-        DoorCustomData& customData = dynamic_cast<DoorCustomData&>(*ptr.getRefData().getCustomData());
+        DoorCustomData& customData = ptr.getRefData().getCustomData()->asDoorCustomData();
         customData.mDoorState = state;
     }
 
     void Door::readAdditionalState (const MWWorld::Ptr& ptr, const ESM::ObjectState& state) const
     {
         ensureCustomData(ptr);
-        DoorCustomData& customData = dynamic_cast<DoorCustomData&>(*ptr.getRefData().getCustomData());
+        DoorCustomData& customData = ptr.getRefData().getCustomData()->asDoorCustomData();
 
         const ESM::DoorState& state2 = dynamic_cast<const ESM::DoorState&>(state);
         customData.mDoorState = state2.mDoorState;
@@ -350,7 +353,7 @@ namespace MWClass
     void Door::writeAdditionalState (const MWWorld::Ptr& ptr, ESM::ObjectState& state) const
     {
         ensureCustomData(ptr);
-        const DoorCustomData& customData = dynamic_cast<const DoorCustomData&>(*ptr.getRefData().getCustomData());
+        const DoorCustomData& customData = ptr.getRefData().getCustomData()->asDoorCustomData();
 
         ESM::DoorState& state2 = dynamic_cast<ESM::DoorState&>(state);
         state2.mDoorState = customData.mDoorState;
