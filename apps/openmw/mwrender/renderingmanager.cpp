@@ -706,9 +706,12 @@ namespace MWRender
         return mObjects->getAnimation(ptr);
     }
 
-    MWRender::Animation* RenderingManager::getPlayerAnimation()
+    const MWRender::Animation* RenderingManager::getAnimation(const MWWorld::ConstPtr &ptr) const
     {
-        return mPlayerAnimation.get();
+        if (mPlayerAnimation.get() && ptr == mPlayerAnimation->getPtr())
+            return mPlayerAnimation.get();
+
+        return mObjects->getAnimation(ptr);
     }
 
     void RenderingManager::setupPlayer(const MWWorld::Ptr &player)
@@ -781,17 +784,13 @@ namespace MWRender
 
     void RenderingManager::updateTextureFiltering()
     {
-        osg::Texture::FilterMode min = osg::Texture::LINEAR_MIPMAP_NEAREST;
-        osg::Texture::FilterMode mag = osg::Texture::LINEAR;
-
-        if (Settings::Manager::getString("texture filtering", "General") == "trilinear")
-            min = osg::Texture::LINEAR_MIPMAP_LINEAR;
-
-        int maxAnisotropy = Settings::Manager::getInt("anisotropy", "General");
-
-        mViewer->stopThreading();
-        mResourceSystem->getTextureManager()->setFilterSettings(min, mag, maxAnisotropy);
-        mViewer->startThreading();
+        mResourceSystem->getTextureManager()->setFilterSettings(
+            Settings::Manager::getString("texture mag filter", "General"),
+            Settings::Manager::getString("texture min filter", "General"),
+            Settings::Manager::getString("texture mipmap", "General"),
+            Settings::Manager::getInt("anisotropy", "General"),
+            mViewer
+        );
     }
 
     void RenderingManager::updateAmbient()
@@ -826,7 +825,9 @@ namespace MWRender
                 mStateUpdater->setFogEnd(mViewDistance);
                 updateProjectionMatrix();
             }
-            else if (it->first == "General" && (it->second == "texture filtering" || it->second == "anisotropy"))
+            else if (it->first == "General" && (it->second == "texture filter" ||
+                                                it->second == "texture mipmap" ||
+                                                it->second == "anisotropy"))
                 updateTextureFiltering();
             else if (it->first == "Water")
                 mWater->processChangedSettings(changed);

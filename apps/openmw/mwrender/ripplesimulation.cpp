@@ -127,7 +127,6 @@ void RippleSimulation::update(float dt)
         }
 
         osg::Vec3f currentPos (it->mPtr.getRefData().getPosition().asVec3());
-        currentPos.z() = 0; // Z is set by the Scene Node
 
         if ( (currentPos - it->mLastEmitPosition).length() > 10
              // Only emit when close to the water surface, not above it and not too deep in the water
@@ -135,6 +134,8 @@ void RippleSimulation::update(float dt)
              && !MWBase::Environment::get().getWorld()->isSubmerged(it->mPtr))
         {
             it->mLastEmitPosition = currentPos;
+
+            currentPos.z() = mParticleNode->getPosition().z();
 
             if (mParticleSystem->numParticles()-mParticleSystem->numDeadParticles() > 500)
                 continue; // TODO: remove the oldest particle to make room?
@@ -145,7 +146,7 @@ void RippleSimulation::update(float dt)
 }
 
 
-void RippleSimulation::addEmitter(const MWWorld::Ptr& ptr, float scale, float force)
+void RippleSimulation::addEmitter(const MWWorld::ConstPtr& ptr, float scale, float force)
 {
     Emitter newEmitter;
     newEmitter.mPtr = ptr;
@@ -155,7 +156,7 @@ void RippleSimulation::addEmitter(const MWWorld::Ptr& ptr, float scale, float fo
     mEmitters.push_back (newEmitter);
 }
 
-void RippleSimulation::removeEmitter (const MWWorld::Ptr& ptr)
+void RippleSimulation::removeEmitter (const MWWorld::ConstPtr& ptr)
 {
     for (std::vector<Emitter>::iterator it = mEmitters.begin(); it != mEmitters.end(); ++it)
     {
@@ -167,7 +168,7 @@ void RippleSimulation::removeEmitter (const MWWorld::Ptr& ptr)
     }
 }
 
-void RippleSimulation::updateEmitterPtr (const MWWorld::Ptr& old, const MWWorld::Ptr& ptr)
+void RippleSimulation::updateEmitterPtr (const MWWorld::ConstPtr& old, const MWWorld::ConstPtr& ptr)
 {
     for (std::vector<Emitter>::iterator it = mEmitters.begin(); it != mEmitters.end(); ++it)
     {

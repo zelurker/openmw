@@ -19,6 +19,7 @@
 
 #include <components/resource/resourcesystem.hpp>
 #include <components/resource/scenemanager.hpp>
+#include <components/resource/keyframemanager.hpp>
 #include <components/resource/texturemanager.hpp>
 
 #include <components/nifosg/nifloader.hpp> // KeyframeHolder
@@ -402,7 +403,7 @@ namespace MWRender
 
         boost::shared_ptr<AnimSource> animsrc;
         animsrc.reset(new AnimSource);
-        animsrc->mKeyframes = mResourceSystem->getSceneManager()->getKeyframes(kfname);
+        animsrc->mKeyframes = mResourceSystem->getKeyframeManager()->get(kfname);
 
         if (!animsrc->mKeyframes || animsrc->mKeyframes->mTextKeys.empty() || animsrc->mKeyframes->mKeyframeControllers.empty())
             return;
@@ -517,7 +518,16 @@ namespace MWRender
         }
 
         if (mTextKeyListener)
-            mTextKeyListener->handleTextKey(groupname, key, map);
+        {
+            try
+            {
+                mTextKeyListener->handleTextKey(groupname, key, map);
+            }
+            catch (std::exception& e)
+            {
+                std::cerr << "Error handling text key " << evt << ": " << e.what() << std::endl;
+            }
+        }
     }
 
     void Animation::play(const std::string &groupname, const AnimPriority& priority, int blendMask, bool autodisable, float speedmult,
@@ -974,20 +984,29 @@ namespace MWRender
         mAccumCtrl = NULL;
 
         if (!forceskeleton)
-            mObjectRoot = mResourceSystem->getSceneManager()->createInstance(model, mInsert);
+        {
+            osg::ref_ptr<osg::Node> created = mResourceSystem->getSceneManager()->createInstance(model, mInsert);
+            mObjectRoot = created->asGroup();
+            if (!mObjectRoot)
+            {
+                mInsert->removeChild(created);
+                mObjectRoot = new osg::Group;
+                mObjectRoot->addChild(created);
+                mInsert->addChild(mObjectRoot);
+            }
+        }
         else
         {
-            osg::ref_ptr<osg::Node> newObjectRoot = mResourceSystem->getSceneManager()->createInstance(model);
-            mSkeleton = dynamic_cast<SceneUtil::Skeleton*>(newObjectRoot.get());
-            if (!mSkeleton)
+            osg::ref_ptr<osg::Node> created = mResourceSystem->getSceneManager()->createInstance(model);
+            osg::ref_ptr<SceneUtil::Skeleton> skel = dynamic_cast<SceneUtil::Skeleton*>(created.get());
+            if (!skel)
             {
-                osg::ref_ptr<SceneUtil::Skeleton> skel = new SceneUtil::Skeleton;
-                mSkeleton = skel.get();
-                skel->addChild(newObjectRoot);
-                newObjectRoot = skel;
+                skel = new SceneUtil::Skeleton;
+                skel->addChild(created);
             }
-            mInsert->addChild(newObjectRoot);
-            mObjectRoot = newObjectRoot;
+            mSkeleton = skel.get();
+            mObjectRoot = skel;
+            mInsert->addChild(mObjectRoot);
         }
 
         if (previousStateset)
@@ -1016,17 +1035,17 @@ namespace MWRender
 
     osg::Group* Animation::getObjectRoot()
     {
-        return static_cast<osg::Group*>(mObjectRoot.get());
+        return mObjectRoot.get();
     }
 
     osg::Group* Animation::getOrCreateObjectRoot()
     {
         if (mObjectRoot)
-            return static_cast<osg::Group*>(mObjectRoot.get());
+            return mObjectRoot.get();
 
         mObjectRoot = new osg::Group;
         mInsert->addChild(mObjectRoot);
-        return static_cast<osg::Group*>(mObjectRoot.get());
+        return mObjectRoot.get();
     }
 
     void Animation::addGlow(osg::ref_ptr<osg::Node> node, osg::Vec4f glowColor)

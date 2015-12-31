@@ -30,10 +30,14 @@ namespace MWWorld
 
             MWScript::Locals mLocals;
 
-            bool mDeleted; // separate delete flag used for deletion by a content file
-            bool mEnabled;
-            int mCount; // 0: deleted
+            /// separate delete flag used for deletion by a content file
+            /// @note not stored in the save game file.
+            bool mDeletedByContentFile;
 
+            bool mEnabled;
+
+            /// 0: deleted
+            int mCount;
 
             ESM::Position mPosition;
 
@@ -51,10 +55,10 @@ namespace MWWorld
 
             /// @param cellRef Used to copy constant data such as position into this class where it can
             /// be altered without affecting the original data. This makes it possible
-            /// to reset the position as the orignal data is still held in the CellRef
+            /// to reset the position as the original data is still held in the CellRef
             RefData (const ESM::CellRef& cellRef);
 
-            RefData (const ESM::ObjectState& objectState);
+            RefData (const ESM::ObjectState& objectState, bool deletedByContentFile);
             ///< Ignores local variables and custom data (not enough context available here to
             /// perform these operations).
 
@@ -70,6 +74,9 @@ namespace MWWorld
 
             /// Return base node (can be a null pointer).
             SceneUtil::PositionAttitudeTransform* getBaseNode();
+
+            /// Return base node (can be a null pointer).
+            const SceneUtil::PositionAttitudeTransform* getBaseNode() const;
 
             /// Set base node (can be a null pointer).
             void setBaseNode (SceneUtil::PositionAttitudeTransform* base);
@@ -87,7 +94,7 @@ namespace MWWorld
 
             /// This flag is only used for content stack loading and will not be stored in the savegame.
             /// If the object was deleted by gameplay, then use setCount(0) instead.
-            void setDeleted(bool deleted);
+            void setDeletedByContentFile(bool deleted);
 
             /// Returns true if the object was either deleted by the content file or by gameplay.
             bool isDeleted() const;
@@ -103,7 +110,7 @@ namespace MWWorld
             void disable();
 
             void setPosition (const ESM::Position& pos);
-            const ESM::Position& getPosition();
+            const ESM::Position& getPosition() const;
 
             void setCustomData (CustomData *data);
             ///< Set custom data (potentially replacing old custom data). The ownership of \a data is
@@ -111,6 +118,8 @@ namespace MWWorld
 
             CustomData *getCustomData();
             ///< May return a 0-pointer. The ownership of the return data object is not transferred.
+
+            const CustomData *getCustomData() const;
 
             bool hasChanged() const;
             ///< Has this RefData changed since it was originally loaded?

@@ -24,11 +24,6 @@ void CSVRender::EditMode::activate (CSVWidget::SceneToolbar *toolbar)
     mWorldspaceWidget->clearSelection (~mMask);
 }
 
-void CSVRender::EditMode::updateUserSetting (const QString& name, const QStringList& value)
-{
-
-}
-
 void CSVRender::EditMode::setEditLock (bool locked)
 {
 
@@ -69,3 +64,9 @@ void CSVRender::EditMode::dragCompleted() {}
 void CSVRender::EditMode::dragAborted() {}
 
 void CSVRender::EditMode::dragWheel (int diff, double speedFactor) {}
+
+void CSVRender::EditMode::dragEnterEvent (QDragEnterEvent *event) {}
+
+void CSVRender::EditMode::dropEvent (QDropEvent* event) {}
+
+void CSVRender::EditMode::dragMoveEvent (QDragMoveEvent *event) {}

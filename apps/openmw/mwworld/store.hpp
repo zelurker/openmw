@@ -27,11 +27,14 @@ namespace MWWorld
         RecordId(const std::string &id = "", bool isDeleted = false);
     };
 
-    struct StoreBase
+    class StoreBase
     {
+    public:
         virtual ~StoreBase() {}
 
         virtual void setUp() {}
+
+        /// List identifiers of records contained in this Store (case-smashed). No-op for Stores that don't use string IDs.
         virtual void listIdentifier(std::vector<std::string> &list) const {}
 
         virtual size_t getSize() const = 0;
@@ -349,14 +352,16 @@ namespace MWWorld
 
 
     template <>
-    struct Store<ESM::Skill> : public IndexedStore<ESM::Skill>
+    class Store<ESM::Skill> : public IndexedStore<ESM::Skill>
     {
+    public:
         Store();
     };
 
     template <>
-    struct Store<ESM::MagicEffect> : public IndexedStore<ESM::MagicEffect>
+    class Store<ESM::MagicEffect> : public IndexedStore<ESM::MagicEffect>
     {
+    public:
         Store();
     };
 

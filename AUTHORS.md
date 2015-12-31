@@ -13,6 +13,7 @@ Programmers
     Marc Zinnschlag (Zini) - Lead Programmer/Project Manager
 
     Adam Hogan (aurix)
+    Aesylwinn
     Aleksandar Jovanov
     Alex Haddad (rainChu)
     Alex McKibben (WeirdSexy)
@@ -74,6 +75,7 @@ Programmers
     Marco Melletti (mellotanica)
     Marco Schulze
     Mateusz Kołaczek (PL_kolek)
+    Mateusz Malisz (malice)
     megaton
     Michael Hogan (Xethik)
     Michael Mc Donnell

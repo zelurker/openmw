@@ -149,14 +149,20 @@ namespace MWMechanics
     {
         MWWorld::Ptr mCreature;
         MWWorld::Ptr mActor;
+        bool mTrapped;
     public:
         SoulTrap(MWWorld::Ptr trappedCreature)
-            : mCreature(trappedCreature) {}
+            : mCreature(trappedCreature)
+            , mTrapped(false)
+        {
+        }
 
         virtual void visit (MWMechanics::EffectKey key,
                                  const std::string& sourceName, const std::string& sourceId, int casterActorId,
                             float magnitude, float remainingTime = -1, float totalTime = -1)
         {
+            if (mTrapped)
+                return;
             if (key.mId != ESM::MagicEffect::Soultrap)
                 return;
             if (magnitude <= 0)
@@ -202,6 +208,8 @@ namespace MWMechanics
             // Set the soul on just one of the gems, not the whole stack
             gem->getContainerStore()->unstack(*gem, caster);
             gem->getCellRef().setSoul(mCreature.getCellRef().getRefId());
+
+            mTrapped = true;
 
             if (caster == getPlayer())
                 MWBase::Environment::get().getWindowManager()->messageBox("#{sSoultrapSuccess}");
@@ -486,11 +494,25 @@ namespace MWMechanics
 
         bool wasDead = creatureStats.isDead();
 
-        // tickable effects (i.e. effects having a lasting impact after expiry)
-        // these effects can be applied as "instant" (handled in spellcasting.cpp) or with a duration, handled here
-        for (MagicEffects::Collection::const_iterator it = effects.begin(); it != effects.end(); ++it)
+        if (duration > 0)
         {
-            effectTick(creatureStats, ptr, it->first, it->second.getMagnitude() * duration);
+            for (MagicEffects::Collection::const_iterator it = effects.begin(); it != effects.end(); ++it)
+            {
+                // tickable effects (i.e. effects having a lasting impact after expiry)
+                effectTick(creatureStats, ptr, it->first, it->second.getMagnitude() * duration);
+
+                // instant effects are already applied on spell impact in spellcasting.cpp, but may also come from permanent abilities
+                if (it->second.getMagnitude() > 0)
+                {
+                    CastSpell cast(ptr, ptr);
+                    if (cast.applyInstantEffect(ptr, ptr, it->first, it->second.getMagnitude()))
+                    {
+                        creatureStats.getActiveSpells().purgeEffect(it->first.mId);
+                        if (ptr.getClass().hasInventoryStore(ptr))
+                            ptr.getClass().getInventoryStore(ptr).purgeEffect(it->first.mId);
+                    }
+                }
+            }
         }
 
         // attributes
@@ -1313,6 +1335,28 @@ namespace MWMechanics
         return list;
     }
 
+    std::list<MWWorld::Ptr> Actors::getActorsFollowing(const MWWorld::Ptr& actor)
+    {
+        std::list<MWWorld::Ptr> list;
+        for(PtrActorMap::iterator iter(mActors.begin());iter != mActors.end();++iter)
+        {
+            const MWWorld::Class &cls = iter->first.getClass();
+            CreatureStats &stats = cls.getCreatureStats(iter->first);
+            if (stats.isDead())
+                continue;
+
+            // An actor counts as following if AiFollow is the current AiPackage, or there are only Combat packages before the AiFollow package
+            for (std::list<MWMechanics::AiPackage*>::const_iterator it = stats.getAiSequence().begin(); it != stats.getAiSequence().end(); ++it)
+            {
+                if ((*it)->followTargetThroughDoors() && (*it)->getTarget() == actor)
+                    list.push_back(iter->first);
+                else if ((*it)->getTypeId() != MWMechanics::AiPackage::TypeIdCombat)
+                    break;
+            }
+        }
+        return list;
+    }
+
     std::list<int> Actors::getActorsFollowingIndices(const MWWorld::Ptr &actor)
     {
         std::list<int> list;
@@ -1333,8 +1377,7 @@ namespace MWMechanics
                         continue;
                     if (followTarget == actor)
                         list.push_back(static_cast<MWMechanics::AiFollow*>(*it)->getFollowIndex());
-                    else
-                        break;
+                    break;
                 }
                 else if ((*it)->getTypeId() != MWMechanics::AiPackage::TypeIdCombat)
                     break;

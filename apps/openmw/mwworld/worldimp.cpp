@@ -54,7 +54,6 @@
 #include "player.hpp"
 #include "manualref.hpp"
 #include "cellstore.hpp"
-#include "cellfunctors.hpp"
 #include "containerstore.hpp"
 #include "inventorystore.hpp"
 #include "actionteleport.hpp"
@@ -690,12 +689,12 @@ namespace MWWorld
         return mWorldScene->searchPtrViaActorId (actorId);
     }
 
-    struct FindContainerFunctor
+    struct FindContainerVisitor
     {
-        Ptr mContainedPtr;
+        ConstPtr mContainedPtr;
         Ptr mResult;
 
-        FindContainerFunctor(const Ptr& containedPtr) : mContainedPtr(containedPtr) {}
+        FindContainerVisitor(const ConstPtr& containedPtr) : mContainedPtr(containedPtr) {}
 
         bool operator() (Ptr ptr)
         {
@@ -709,7 +708,7 @@ namespace MWWorld
         }
     };
 
-    Ptr World::findContainer(const Ptr& ptr)
+    Ptr World::findContainer(const ConstPtr& ptr)
     {
         if (ptr.isInCell())
             return Ptr();
@@ -721,11 +720,15 @@ namespace MWWorld
         const Scene::CellStoreCollection& collection = mWorldScene->getActiveCells();
         for (Scene::CellStoreCollection::const_iterator cellIt = collection.begin(); cellIt != collection.end(); ++cellIt)
         {
-            FindContainerFunctor functor(ptr);
-            (*cellIt)->forEachContainer(functor);
+            FindContainerVisitor visitor(ptr);
+            (*cellIt)->forEachType<ESM::Container>(visitor);
+            if (visitor.mResult.isEmpty())
+                (*cellIt)->forEachType<ESM::Creature>(visitor);
+            if (visitor.mResult.isEmpty())
+                (*cellIt)->forEachType<ESM::NPC>(visitor);
 
-            if (!functor.mResult.isEmpty())
-                return functor.mResult;
+            if (!visitor.mResult.isEmpty())
+                return visitor.mResult;
         }
 
         return Ptr();
@@ -1035,32 +1038,30 @@ namespace MWWorld
         return facedObject;
     }
 
-    osg::Vec3f getActorHeadPosition(const MWWorld::Ptr& actor, MWRender::RenderingManager* rendering)
+    osg::Matrixf World::getActorHeadTransform(const MWWorld::ConstPtr& actor) const
     {
-        osg::Vec3f origin(actor.getRefData().getPosition().asVec3());
-
-        MWRender::Animation* anim = rendering->getAnimation(actor);
-        if (anim != NULL)
+        const MWRender::Animation *anim = mRendering->getAnimation(actor);
+        if(anim)
         {
-            const osg::Node* node = anim->getNode("Head");
-            if (node == NULL)
-                node = anim->getNode("Bip01 Head");
-            if (node != NULL)
+            const osg::Node *node = anim->getNode("Head");
+            if(!node) node = anim->getNode("Bip01 Head");
+            if(node)
             {
                 osg::MatrixList mats = node->getWorldMatrices();
-                if (mats.size())
-                    origin = mats[0].getTrans();
+                if(!mats.empty())
+                    return mats[0];
             }
         }
-        return origin;
+        return osg::Matrixf::translate(actor.getRefData().getPosition().asVec3());
     }
 
-    std::pair<MWWorld::Ptr,osg::Vec3f> World::getHitContact(const MWWorld::Ptr &ptr, float distance)
+
+    std::pair<MWWorld::Ptr,osg::Vec3f> World::getHitContact(const MWWorld::ConstPtr &ptr, float distance)
     {
         const ESM::Position &posdata = ptr.getRefData().getPosition();
 
         osg::Quat rot = osg::Quat(posdata.rot[0], osg::Vec3f(-1,0,0)) * osg::Quat(posdata.rot[2], osg::Vec3f(0,0,-1));
-        osg::Vec3f pos = getActorHeadPosition(ptr, mRendering);
+        osg::Vec3f pos = getActorHeadTransform(ptr).getTrans();
 
         std::pair<MWWorld::Ptr,osg::Vec3f> result = mPhysics->getHitContact(ptr, pos, rot, distance);
         if(result.first.isEmpty())
@@ -1073,6 +1074,9 @@ namespace MWWorld
     {
         if (!ptr.getRefData().isDeleted() && ptr.getContainerStore() == NULL)
         {
+            if (ptr == getPlayerPtr())
+                throw std::runtime_error("can not delete player object");
+
             ptr.getRefData().setCount(0);
 
             if (ptr.isInCell()
@@ -1146,7 +1150,7 @@ namespace MWWorld
                 bool newCellActive = mWorldScene->isCellActive(*newCell);
                 if (!currCellActive && newCellActive)
                 {
-                    newPtr = ptr.getClass().copyToCell(ptr, *newCell, pos);
+                    newPtr = currCell->moveTo(ptr, newCell);
                     mWorldScene->addObjectToScene(newPtr);
 
                     std::string script = newPtr.getClass().getScript(newPtr);
@@ -1162,17 +1166,16 @@ namespace MWWorld
                     removeContainerScripts (ptr);
                     haveToMove = false;
 
-                    newPtr = ptr.getClass().copyToCell(ptr, *newCell);
+                    newPtr = currCell->moveTo(ptr, newCell);
                     newPtr.getRefData().setBaseNode(0);
                 }
                 else if (!currCellActive && !newCellActive)
-                    newPtr = ptr.getClass().copyToCell(ptr, *newCell);
+                    newPtr = currCell->moveTo(ptr, newCell);
                 else // both cells active
                 {
-                    newPtr = ptr.getClass().copyToCell(ptr, *newCell, pos);
+                    newPtr = currCell->moveTo(ptr, newCell);
 
                     mRendering->updatePtr(ptr, newPtr);
-                    ptr.getRefData().setBaseNode(NULL);
                     MWBase::Environment::get().getSoundManager()->updatePtr (ptr, newPtr);
                     mPhysics->updatePtr(ptr, newPtr);
 
@@ -1189,7 +1192,6 @@ namespace MWWorld
                         addContainerScripts (newPtr, newCell);
                     }
                 }
-                ptr.getRefData().setCount(0);
             }
         }
         if (haveToMove && newPtr.getRefData().getBaseNode())
@@ -1317,9 +1319,9 @@ namespace MWWorld
         rotateObjectImp(ptr, osg::Vec3f(x, y, z), adjust);
     }
 
-    MWWorld::Ptr World::safePlaceObject(const MWWorld::Ptr& ptr, MWWorld::CellStore* cell, ESM::Position pos)
+    MWWorld::Ptr World::safePlaceObject(const MWWorld::ConstPtr& ptr, MWWorld::CellStore* cell, ESM::Position pos)
     {
-        return copyObjectToCell(ptr,cell,pos,false);
+        return copyObjectToCell(ptr,cell,pos,ptr.getRefData().getCount(),false);
     }
 
     void World::indexToPosition (int cellX, int cellY, float &x, float &y, bool centre) const
@@ -1378,7 +1380,7 @@ namespace MWWorld
     {
         osg::Vec3f a(x1,y1,z1);
         osg::Vec3f b(x2,y2,z2);
-        MWPhysics::PhysicsSystem::RayResult result = mPhysics->castRay(a, b, MWWorld::Ptr(), MWPhysics::CollisionType_World);
+        MWPhysics::PhysicsSystem::RayResult result = mPhysics->castRay(a, b, MWWorld::Ptr(), MWPhysics::CollisionType_World|MWPhysics::CollisionType_Door);
         return result.mHit;
     }
 
@@ -1411,7 +1413,7 @@ namespace MWWorld
                 bool reached = (targetRot == maxRot && it->second) || targetRot == minRot;
 
                 /// \todo should use convexSweepTest here
-                std::vector<MWWorld::Ptr> collisions = mPhysics->getCollisions(it->first, MWPhysics::CollisionType_Actor, MWPhysics::CollisionType_Actor);
+                std::vector<MWWorld::Ptr> collisions = mPhysics->getCollisions(it->first, MWPhysics::CollisionType_Door, MWPhysics::CollisionType_Actor);
                 for (std::vector<MWWorld::Ptr>::iterator cit = collisions.begin(); cit != collisions.end(); ++cit)
                 {
                     MWWorld::Ptr ptr = *cit;
@@ -1705,27 +1707,32 @@ namespace MWWorld
 
     osg::Vec2f World::getNorthVector (CellStore* cell)
     {
-        MWWorld::CellRefList<ESM::Static>& statics = cell->get<ESM::Static>();
-        MWWorld::LiveCellRef<ESM::Static>* ref = statics.find("northmarker");
-        if (!ref)
+        MWWorld::Ptr northmarker = cell->search("northmarker");
+
+        if (northmarker.isEmpty())
             return osg::Vec2f(0, 1);
 
-        osg::Quat orient (-ref->mData.getPosition().rot[2], osg::Vec3f(0,0,1));
+        osg::Quat orient (-northmarker.getRefData().getPosition().rot[2], osg::Vec3f(0,0,1));
         osg::Vec3f dir = orient * osg::Vec3f(0,1,0);
         osg::Vec2f d (dir.x(), dir.y());
         return d;
     }
 
-    void World::getDoorMarkers (CellStore* cell, std::vector<World::DoorMarker>& out)
+    struct GetDoorMarkerVisitor
     {
-        MWWorld::CellRefList<ESM::Door>& doors = cell->get<ESM::Door>();
-        CellRefList<ESM::Door>::List& refList = doors.mList;
-        for (CellRefList<ESM::Door>::List::iterator it = refList.begin(); it != refList.end(); ++it)
+        GetDoorMarkerVisitor(std::vector<World::DoorMarker>& out)
+            : mOut(out)
         {
-            MWWorld::LiveCellRef<ESM::Door>& ref = *it;
+        }
 
-            if (!ref.mData.isEnabled())
-                continue;
+        std::vector<World::DoorMarker>& mOut;
+
+        bool operator()(const MWWorld::Ptr& ptr)
+        {
+            MWWorld::LiveCellRef<ESM::Door>& ref = *static_cast<MWWorld::LiveCellRef<ESM::Door>* >(ptr.getBase());
+
+            if (!ref.mData.isEnabled() || ref.mData.isDeleted())
+                return true;
 
             if (ref.mRef.getTeleport())
             {
@@ -1741,7 +1748,7 @@ namespace MWWorld
                 else
                 {
                     cellid.mPaged = true;
-                    positionToIndex(
+                    MWBase::Environment::get().getWorld()->positionToIndex(
                                 ref.mRef.getDoorDest().pos[0],
                                 ref.mRef.getDoorDest().pos[1],
                                 cellid.mIndex.mX,
@@ -1753,9 +1760,16 @@ namespace MWWorld
 
                 newMarker.x = pos.pos[0];
                 newMarker.y = pos.pos[1];
-                out.push_back(newMarker);
+                mOut.push_back(newMarker);
             }
+            return true;
         }
+    };
+
+    void World::getDoorMarkers (CellStore* cell, std::vector<World::DoorMarker>& out)
+    {
+        GetDoorMarkerVisitor visitor(out);
+        cell->forEachType<ESM::Door>(visitor);
     }
 
     void World::setWaterHeight(const float height)
@@ -1783,7 +1797,7 @@ namespace MWWorld
             item.getRefData().getLocals().setVarByInt(script, "onpcdrop", 1);
     }
 
-    MWWorld::Ptr World::placeObject (const MWWorld::Ptr& object, float cursorX, float cursorY, int amount)
+    MWWorld::Ptr World::placeObject (const MWWorld::ConstPtr& object, float cursorX, float cursorY, int amount)
     {
         const float maxDist = 200.f;
 
@@ -1803,10 +1817,7 @@ namespace MWWorld
         pos.rot[1] = 0;
 
         // copy the object and set its count
-        int origCount = object.getRefData().getCount();
-        object.getRefData().setCount(amount);
-        Ptr dropped = copyObjectToCell(object, cell, pos, true);
-        object.getRefData().setCount(origCount);
+        Ptr dropped = copyObjectToCell(object, cell, pos, amount, true);
 
         // only the player place items in the world, so no need to check actor
         PCDropped(dropped);
@@ -1832,7 +1843,7 @@ namespace MWWorld
     }
 
 
-    Ptr World::copyObjectToCell(const Ptr &object, CellStore* cell, ESM::Position pos, bool adjustPos)
+    Ptr World::copyObjectToCell(const ConstPtr &object, CellStore* cell, ESM::Position pos, int count, bool adjustPos)
     {
         if (cell->isExterior())
         {
@@ -1842,7 +1853,7 @@ namespace MWWorld
         }
 
         MWWorld::Ptr dropped =
-            object.getClass().copyToCell(object, *cell, pos);
+            object.getClass().copyToCell(object, *cell, pos, count);
 
         // Reset some position values that could be uninitialized if this item came from a container
         dropped.getCellRef().setPosition(pos);
@@ -1885,7 +1896,7 @@ namespace MWWorld
         return dropped;
     }
 
-    MWWorld::Ptr World::dropObjectOnGround (const Ptr& actor, const Ptr& object, int amount)
+    MWWorld::Ptr World::dropObjectOnGround (const Ptr& actor, const ConstPtr& object, int amount)
     {
         MWWorld::CellStore* cell = actor.getCell();
 
@@ -1906,10 +1917,7 @@ namespace MWWorld
             pos.pos[2] = result.mHitPointWorld.z();
 
         // copy the object and set its count
-        int origCount = object.getRefData().getCount();
-        object.getRefData().setCount(amount);
-        Ptr dropped = copyObjectToCell(object, cell, pos);
-        object.getRefData().setCount(origCount);
+        Ptr dropped = copyObjectToCell(object, cell, pos, amount, true);
 
         if(actor == mPlayer->getPlayer()) // Only call if dropped by player
             PCDropped(dropped);
@@ -1957,23 +1965,23 @@ namespace MWWorld
         return false;
     }
 
-    bool World::isSubmerged(const MWWorld::Ptr &object) const
+    bool World::isSubmerged(const MWWorld::ConstPtr &object) const
     {
         return isUnderwater(object, 1.0f/mSwimHeightScale);
     }
 
-    bool World::isSwimming(const MWWorld::Ptr &object) const
+    bool World::isSwimming(const MWWorld::ConstPtr &object) const
     {
         return isUnderwater(object, mSwimHeightScale);
     }
 
-    bool World::isWading(const MWWorld::Ptr &object) const
+    bool World::isWading(const MWWorld::ConstPtr &object) const
     {
         const float kneeDeep = 0.25f;
         return isUnderwater(object, kneeDeep);
     }
 
-    bool World::isUnderwater(const MWWorld::Ptr &object, const float heightRatio) const
+    bool World::isUnderwater(const MWWorld::ConstPtr &object, const float heightRatio) const
     {
         osg::Vec3f pos (object.getRefData().getPosition().asVec3());
 
@@ -2099,8 +2107,11 @@ namespace MWWorld
 
     MWRender::Animation* World::getAnimation(const MWWorld::Ptr &ptr)
     {
-        if (ptr == getPlayerPtr())
-            return mRendering->getPlayerAnimation();
+        return mRendering->getAnimation(ptr);
+    }
+
+    const MWRender::Animation* World::getAnimation(const MWWorld::ConstPtr &ptr) const
+    {
         return mRendering->getAnimation(ptr);
     }
 
@@ -2140,33 +2151,33 @@ namespace MWWorld
             mDoorStates.erase(door);
     }
 
-    bool World::getPlayerStandingOn (const MWWorld::Ptr& object)
+    bool World::getPlayerStandingOn (const MWWorld::ConstPtr& object)
     {
         MWWorld::Ptr player = getPlayerPtr();
         return mPhysics->isActorStandingOn(player, object);
     }
 
-    bool World::getActorStandingOn (const MWWorld::Ptr& object)
+    bool World::getActorStandingOn (const MWWorld::ConstPtr& object)
     {
         std::vector<MWWorld::Ptr> actors;
         mPhysics->getActorsStandingOn(object, actors);
         return !actors.empty();
     }
 
-    bool World::getPlayerCollidingWith (const MWWorld::Ptr& object)
+    bool World::getPlayerCollidingWith (const MWWorld::ConstPtr& object)
     {
         MWWorld::Ptr player = getPlayerPtr();
         return mPhysics->isActorCollidingWith(player, object);
     }
 
-    bool World::getActorCollidingWith (const MWWorld::Ptr& object)
+    bool World::getActorCollidingWith (const MWWorld::ConstPtr& object)
     {
         std::vector<MWWorld::Ptr> actors;
         mPhysics->getActorsCollidingWith(object, actors);
         return !actors.empty();
     }
 
-    void World::hurtStandingActors(const Ptr &object, float healthPerSecond)
+    void World::hurtStandingActors(const ConstPtr &object, float healthPerSecond)
     {
         if (MWBase::Environment::get().getWindowManager()->isGuiMode())
             return;
@@ -2196,7 +2207,7 @@ namespace MWWorld
         }
     }
 
-    void World::hurtCollidingActors(const Ptr &object, float healthPerSecond)
+    void World::hurtCollidingActors(const ConstPtr &object, float healthPerSecond)
     {
         if (MWBase::Environment::get().getWindowManager()->isGuiMode())
             return;
@@ -2250,25 +2261,40 @@ namespace MWWorld
             return osg::Vec3f(0,1,0);
     }
 
-    void World::getContainersOwnedBy (const MWWorld::Ptr& npc, std::vector<MWWorld::Ptr>& out)
+    struct GetContainersOwnedByVisitor
+    {
+        GetContainersOwnedByVisitor(const MWWorld::ConstPtr& owner, std::vector<MWWorld::Ptr>& out)
+            : mOwner(owner)
+            , mOut(out)
+        {
+        }
+
+        MWWorld::ConstPtr mOwner;
+        std::vector<MWWorld::Ptr>& mOut;
+
+        bool operator()(const MWWorld::Ptr& ptr)
+        {
+            if (ptr.getRefData().isDeleted())
+                return true;
+
+            if (Misc::StringUtils::ciEqual(ptr.getCellRef().getOwner(), mOwner.getCellRef().getRefId()))
+                mOut.push_back(ptr);
+
+            return true;
+        }
+    };
+
+    void World::getContainersOwnedBy (const MWWorld::ConstPtr& owner, std::vector<MWWorld::Ptr>& out)
     {
         const Scene::CellStoreCollection& collection = mWorldScene->getActiveCells();
         for (Scene::CellStoreCollection::const_iterator cellIt = collection.begin(); cellIt != collection.end(); ++cellIt)
         {
-            MWWorld::CellRefList<ESM::Container>& containers = (*cellIt)->get<ESM::Container>();
-            CellRefList<ESM::Container>::List& refList = containers.mList;
-            for (CellRefList<ESM::Container>::List::iterator container = refList.begin(); container != refList.end(); ++container)
-            {
-                MWWorld::Ptr ptr (&*container, *cellIt);
-                if (ptr.getRefData().isDeleted())
-                    continue;
-                if (Misc::StringUtils::ciEqual(ptr.getCellRef().getOwner(), npc.getCellRef().getRefId()))
-                    out.push_back(ptr);
-            }
+            GetContainersOwnedByVisitor visitor (owner, out);
+            (*cellIt)->forEachType<ESM::Container>(visitor);
         }
     }
 
-    struct ListObjectsFunctor
+    struct ListObjectsVisitor
     {
         std::vector<MWWorld::Ptr> mObjects;
 
@@ -2280,21 +2306,21 @@ namespace MWWorld
         }
     };
 
-    void World::getItemsOwnedBy (const MWWorld::Ptr& npc, std::vector<MWWorld::Ptr>& out)
+    void World::getItemsOwnedBy (const MWWorld::ConstPtr& npc, std::vector<MWWorld::Ptr>& out)
     {
         const Scene::CellStoreCollection& collection = mWorldScene->getActiveCells();
         for (Scene::CellStoreCollection::const_iterator cellIt = collection.begin(); cellIt != collection.end(); ++cellIt)
         {
-            ListObjectsFunctor functor;
-            (*cellIt)->forEach<ListObjectsFunctor>(functor);
+            ListObjectsVisitor visitor;
+            (*cellIt)->forEach(visitor);
 
-            for (std::vector<MWWorld::Ptr>::iterator it = functor.mObjects.begin(); it != functor.mObjects.end(); ++it)
+            for (std::vector<MWWorld::Ptr>::iterator it = visitor.mObjects.begin(); it != visitor.mObjects.end(); ++it)
                 if (Misc::StringUtils::ciEqual(it->getCellRef().getOwner(), npc.getCellRef().getRefId()))
                     out.push_back(*it);
         }
     }
 
-    bool World::getLOS(const MWWorld::Ptr& actor, const MWWorld::Ptr& targetActor)
+    bool World::getLOS(const MWWorld::ConstPtr& actor, const MWWorld::ConstPtr& targetActor)
     {
         if (!targetActor.getRefData().isEnabled() || !actor.getRefData().isEnabled())
             return false; // cannot get LOS unless both NPC's are enabled
@@ -2311,7 +2337,7 @@ namespace MWWorld
         to = from + (to * maxDist);
 
         MWPhysics::PhysicsSystem::RayResult result = mPhysics->castRay(from, to, MWWorld::Ptr(),
-            MWPhysics::CollisionType_World|MWPhysics::CollisionType_HeightMap);
+            MWPhysics::CollisionType_World|MWPhysics::CollisionType_HeightMap|MWPhysics::CollisionType_Door);
 
         if (!result.mHit)
             return maxDist;
@@ -2339,7 +2365,8 @@ namespace MWWorld
         if (0 == cellStore) {
             return false;
         }
-        const DoorList &doors = cellStore->get<ESM::Door>().mList;
+
+        const DoorList &doors = cellStore->getReadOnlyDoors().mList;
         for (DoorList::const_iterator it = doors.begin(); it != doors.end(); ++it) {
             if (!it->mRef.getTeleport()) {
                 continue;
@@ -2361,7 +2388,7 @@ namespace MWWorld
             if (0 != source) {
                 // Find door leading to our current teleport door
                 // and use it destination to position inside cell.
-                const DoorList &doors = source->get<ESM::Door>().mList;
+                const DoorList &doors = source->getReadOnlyDoors().mList;
                 for (DoorList::const_iterator jt = doors.begin(); jt != doors.end(); ++jt) {
                     if (it->mRef.getTeleport() &&
                         Misc::StringUtils::ciEqual(name, jt->mRef.getDestCell()))
@@ -2375,7 +2402,7 @@ namespace MWWorld
             }
         }
         // Fall back to the first static location.
-        const StaticList &statics = cellStore->get<ESM::Static>().mList;
+        const StaticList &statics = cellStore->getReadOnlyStatics().mList;
         if ( statics.begin() != statics.end() ) {
             pos = statics.begin()->mRef.getPosition();
             return true;
@@ -2424,111 +2451,6 @@ namespace MWWorld
     void World::reattachPlayerCamera()
     {
         mRendering->rebuildPtr(getPlayerPtr());
-    }
-
-    void World::setWerewolf(const MWWorld::Ptr& actor, bool werewolf)
-    {
-        MWMechanics::NpcStats& npcStats = actor.getClass().getNpcStats(actor);
-
-        // The actor does not have to change state
-        if (npcStats.isWerewolf() == werewolf)
-            return;
-
-        if (actor == getPlayerPtr())
-        {
-            if (werewolf)
-            {
-                mPlayer->saveSkillsAttributes();
-                mPlayer->setWerewolfSkillsAttributes();
-            }
-            else
-                mPlayer->restoreSkillsAttributes();
-        }
-
-        npcStats.setWerewolf(werewolf);
-
-        // This is a bit dangerous. Equipped items other than WerewolfRobe may reference
-        // bones that do not even exist with the werewolf object root.
-        // Therefore, make sure to unequip everything at once, and only fire the change event
-        // (which will rebuild the animation parts) afterwards. unequipAll will do this for us.
-        MWWorld::InventoryStore& invStore = actor.getClass().getInventoryStore(actor);
-        invStore.unequipAll(actor);
-
-        if(werewolf)
-        {
-            InventoryStore &inv = actor.getClass().getInventoryStore(actor);
-
-            inv.equip(InventoryStore::Slot_Robe, inv.ContainerStore::add("werewolfrobe", 1, actor), actor);
-        }
-        else
-        {
-            actor.getClass().getContainerStore(actor).remove("werewolfrobe", 1, actor);
-        }
-
-        // NpcAnimation::updateParts will already rebuild the animation when it detects change of Npc type.
-        // the following is just for reattaching the camera properly.
-        mRendering->rebuildPtr(actor);
-
-        if(actor == getPlayerPtr())
-        {
-            // Update the GUI only when called on the player
-            MWBase::WindowManager* windowManager = MWBase::Environment::get().getWindowManager();
-
-            if (werewolf)
-            {
-                windowManager->forceHide(MWGui::GW_Inventory);
-                windowManager->forceHide(MWGui::GW_Magic);
-            }
-            else
-            {
-                windowManager->unsetForceHide(MWGui::GW_Inventory);
-                windowManager->unsetForceHide(MWGui::GW_Magic);
-            }
-
-            windowManager->setWerewolfOverlay(werewolf);
-
-            // Witnesses of the player's transformation will make them a globally known werewolf
-            std::vector<MWWorld::Ptr> closeActors;
-            MWBase::Environment::get().getMechanicsManager()->getActorsInRange(actor.getRefData().getPosition().asVec3(),
-                                                                               getStore().get<ESM::GameSetting>().search("fAlarmRadius")->getFloat(),
-                                                                               closeActors);
-
-            bool detected = false, reported = false;
-            for (std::vector<MWWorld::Ptr>::const_iterator it = closeActors.begin(); it != closeActors.end(); ++it)
-            {
-                if (*it == actor)
-                    continue;
-
-                if (!it->getClass().isNpc())
-                    continue;
-
-                if (getLOS(*it, actor) && MWBase::Environment::get().getMechanicsManager()->awarenessCheck(actor, *it))
-                    detected = true;
-                if (it->getClass().getCreatureStats(*it).getAiSetting(MWMechanics::CreatureStats::AI_Alarm).getModified() > 0)
-                    reported = true;
-            }
-
-            if (detected)
-            {
-                windowManager->messageBox("#{sWerewolfAlarmMessage}");
-                setGlobalInt("pcknownwerewolf", 1);
-
-                if (reported)
-                {
-                    npcStats.setBounty(npcStats.getBounty()+
-                                       mStore.get<ESM::GameSetting>().find("iWereWolfBounty")->getInt());
-                    windowManager->messageBox("#{sCrimeMessage}");
-                }
-            }
-        }
-    }
-
-    void World::applyWerewolfAcrobatics(const Ptr &actor)
-    {
-        const Store<ESM::GameSetting> &gmst = getStore().get<ESM::GameSetting>();
-        MWMechanics::NpcStats &stats = actor.getClass().getNpcStats(actor);
-
-        stats.getSkill(ESM::Skill::Acrobatics).setBase(gmst.find("fWerewolfAcrobatics")->getInt());
     }
 
     bool World::getGodModeState()
@@ -2638,7 +2560,7 @@ namespace MWWorld
         MWWorld::Ptr target;
         float distance = 192.f; // ??
         osg::Vec3f hitPosition = actor.getRefData().getPosition().asVec3();
-        osg::Vec3f origin = getActorHeadPosition(actor, mRendering);
+        osg::Vec3f origin = getActorHeadTransform(actor).getTrans();
 
         osg::Quat orient = osg::Quat(actor.getRefData().getPosition().rot[0], osg::Vec3f(-1,0,0))
                 * osg::Quat(actor.getRefData().getPosition().rot[2], osg::Vec3f(0,0,-1));
@@ -2693,7 +2615,7 @@ namespace MWWorld
         }
     }
 
-    void World::launchProjectile (MWWorld::Ptr actor, MWWorld::Ptr projectile,
+    void World::launchProjectile (MWWorld::Ptr actor, MWWorld::ConstPtr projectile,
                                    const osg::Vec3f& worldPos, const osg::Quat& orient, MWWorld::Ptr bow, float speed, float attackStrength)
     {
         mProjectileManager->launchProjectile(actor, projectile, worldPos, orient, bow, speed, attackStrength);
@@ -2755,7 +2677,7 @@ namespace MWWorld
                 MWWorld::CellStore *next = getInterior( *i );
                 if ( !next ) continue;
 
-                const MWWorld::CellRefList<ESM::Door>& doors = next->getReadOnly<ESM::Door>();
+                const MWWorld::CellRefList<ESM::Door>& doors = next->getReadOnlyDoors();
                 const CellRefList<ESM::Door>::List& refList = doors.mList;
 
                 // Check if any door in the cell leads to an exterior directly
@@ -2786,7 +2708,7 @@ namespace MWWorld
         return false;
     }
 
-    MWWorld::Ptr World::getClosestMarker( const MWWorld::Ptr &ptr, const std::string &id )
+    MWWorld::ConstPtr World::getClosestMarker( const MWWorld::Ptr &ptr, const std::string &id )
     {
         if ( ptr.getCell()->isExterior() ) {
             return getClosestMarkerFromExteriorPosition(mPlayer->getLastKnownExteriorPosition(), id);
@@ -2798,7 +2720,7 @@ namespace MWWorld
         std::set< std::string >checkedCells;
         std::set< std::string >currentCells;
         std::set< std::string >nextCells;
-        MWWorld::Ptr closestMarker;
+        MWWorld::ConstPtr closestMarker;
 
         nextCells.insert( ptr.getCell()->getCell()->mName );
         while ( !nextCells.empty() ) {
@@ -2809,13 +2731,13 @@ namespace MWWorld
                 checkedCells.insert( *i );
                 if ( !next ) continue;
 
-                closestMarker = next->search( id );
+                closestMarker = next->searchConst( id );
                 if ( !closestMarker.isEmpty() )
                 {
                     return closestMarker;
                 }
 
-                const MWWorld::CellRefList<ESM::Door>& doors = next->getReadOnly<ESM::Door>();
+                const MWWorld::CellRefList<ESM::Door>& doors = next->getReadOnlyDoors();
                 const CellRefList<ESM::Door>::List& doorList = doors.mList;
 
                 // Check if any door in the cell leads to an exterior directly
@@ -2839,12 +2761,11 @@ namespace MWWorld
                 }
             }
         }
-
         return MWWorld::Ptr();
     }
 
-    MWWorld::Ptr World::getClosestMarkerFromExteriorPosition( const osg::Vec3f& worldPos, const std::string &id ) {
-        MWWorld::Ptr closestMarker;
+    MWWorld::ConstPtr World::getClosestMarkerFromExteriorPosition( const osg::Vec3f& worldPos, const std::string &id ) {
+        MWWorld::ConstPtr closestMarker;
         float closestDistance = std::numeric_limits<float>::max();
 
         std::vector<MWWorld::Ptr> markers;
@@ -2869,7 +2790,7 @@ namespace MWWorld
     void World::teleportToClosestMarker (const MWWorld::Ptr& ptr,
                                           const std::string& id)
     {
-        MWWorld::Ptr closestMarker = getClosestMarker( ptr, id );
+        MWWorld::ConstPtr closestMarker = getClosestMarker( ptr, id );
 
         if ( closestMarker.isEmpty() )
         {
@@ -2896,9 +2817,9 @@ namespace MWWorld
         mWeatherManager->update(duration, paused);
     }
 
-    struct AddDetectedReference
+    struct AddDetectedReferenceVisitor
     {
-        AddDetectedReference(std::vector<Ptr>& out, Ptr detector, World::DetectionType type, float squaredDist)
+        AddDetectedReferenceVisitor(std::vector<Ptr>& out, Ptr detector, World::DetectionType type, float squaredDist)
             : mOut(out), mDetector(detector), mSquaredDist(squaredDist), mType(type)
         {
         }
@@ -2907,7 +2828,7 @@ namespace MWWorld
         Ptr mDetector;
         float mSquaredDist;
         World::DetectionType mType;
-        bool operator() (MWWorld::Ptr ptr)
+        bool operator() (const MWWorld::Ptr& ptr)
         {
             if ((ptr.getRefData().getPosition().asVec3() - mDetector.getRefData().getPosition().asVec3()).length2() >= mSquaredDist)
                 return true;
@@ -2938,7 +2859,7 @@ namespace MWWorld
             return true;
         }
 
-        bool needToAdd (MWWorld::Ptr ptr, MWWorld::Ptr detector)
+        bool needToAdd (const MWWorld::Ptr& ptr, const MWWorld::Ptr& detector)
         {
             if (mType == World::Detect_Creature)
             {
@@ -2978,13 +2899,13 @@ namespace MWWorld
 
         dist = feetToGameUnits(dist);
 
-        AddDetectedReference functor (out, ptr, type, dist*dist);
+        AddDetectedReferenceVisitor visitor (out, ptr, type, dist*dist);
 
         const Scene::CellStoreCollection& active = mWorldScene->getActiveCells();
         for (Scene::CellStoreCollection::const_iterator it = active.begin(); it != active.end(); ++it)
         {
             MWWorld::CellStore* cellStore = *it;
-            cellStore->forEach(functor);
+            cellStore->forEach(visitor);
         }
     }
 
@@ -3029,13 +2950,13 @@ namespace MWWorld
 
     void World::confiscateStolenItems(const Ptr &ptr)
     {
-        MWWorld::Ptr prisonMarker = getClosestMarker( ptr, "prisonmarker" );
+        MWWorld::ConstPtr prisonMarker = getClosestMarker( ptr, "prisonmarker" );
         if ( prisonMarker.isEmpty() )
         {
             std::cerr << "Failed to confiscate items: no closest prison marker found." << std::endl;
             return;
         }
-        std::string prisonName = prisonMarker.mRef->mRef.getDestCell();
+        std::string prisonName = prisonMarker.getCellRef().getDestCell();
         if ( prisonName.empty() )
         {
             std::cerr << "Failed to confiscate items: prison marker not linked to prison interior" << std::endl;
@@ -3240,7 +3161,7 @@ namespace MWWorld
             interpreterContext.executeActivation(object, actor);
     }
 
-    struct ResetActorsFunctor
+    struct ResetActorsVisitor
     {
         bool operator() (Ptr ptr)
         {
@@ -3262,29 +3183,29 @@ namespace MWWorld
             iter!=mWorldScene->getActiveCells().end(); ++iter)
         {
             CellStore* cellstore = *iter;
-            ResetActorsFunctor functor;
-            cellstore->forEach(functor);
+            ResetActorsVisitor visitor;
+            cellstore->forEach(visitor);
         }
     }
 
-    bool World::isWalkingOnWater(const Ptr &actor)
+    bool World::isWalkingOnWater(const ConstPtr &actor)
     {
-        MWPhysics::Actor* physicActor = mPhysics->getActor(actor);
+        const MWPhysics::Actor* physicActor = mPhysics->getActor(actor);
         if (physicActor && physicActor->isWalkingOnWater())
             return true;
         return false;
     }
 
-    osg::Vec3f World::aimToTarget(const Ptr &actor, const MWWorld::Ptr& target)
+    osg::Vec3f World::aimToTarget(const ConstPtr &actor, const MWWorld::ConstPtr& target)
     {
-        osg::Vec3f weaponPos = getActorHeadPosition(actor, mRendering);
+        osg::Vec3f weaponPos = getActorHeadTransform(actor).getTrans();
         osg::Vec3f targetPos = mPhysics->getPosition(target);
         return (targetPos - weaponPos);
     }
 
-    float World::getHitDistance(const Ptr &actor, const Ptr &target)
+    float World::getHitDistance(const ConstPtr &actor, const ConstPtr &target)
     {
-        osg::Vec3f weaponPos = getActorHeadPosition(actor, mRendering);
+        osg::Vec3f weaponPos = getActorHeadTransform(actor).getTrans();
         return mPhysics->getHitDistance(weaponPos, target);
     }
 
