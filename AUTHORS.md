@@ -48,6 +48,7 @@ Programmers
     Gašper Sedej
     gugus/gus
     Hallfaer Tuilinn
+    hristoast
     Internecine
     Jacob Essex (Yacoby)
     Jannik Heller (scrawl)
@@ -56,6 +57,7 @@ Programmers
     Jeffrey Haines (Jyby)
     Jengerer
     Jiří Kuneš (kunesj)
+    Joe Wilkerson (neuralroberts)
     Joel Graff (graffy)
     John Blomberg (fstp)
     Jordan Ayers
@@ -95,6 +97,7 @@ Programmers
     Pieter van der Kloet (pvdk)
     pkubik
     Radu-Marius Popovici (rpopovici)
+    rcutmore
     rdimesio
     riothamus
     Robert MacGregor (Ragora)
