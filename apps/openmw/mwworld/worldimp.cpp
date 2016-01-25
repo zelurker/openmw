@@ -677,7 +677,15 @@ namespace MWWorld
         Ptr ret = searchPtr(name, activeOnly);
         if (!ret.isEmpty())
             return ret;
-        throw std::runtime_error ("unknown ID: " + name);
+	if (activeOnly) {
+	    ret = searchPtr(name, false);
+	    if (!ret.isEmpty()) {
+		std::cout << "found ID without activeonly" << std::endl;
+		return ret;
+	    }
+	    throw std::runtime_error ("unknown ID: " + name + " activeOnly" );
+	} else
+	    throw std::runtime_error ("unknown ID: " + name + " without activeOnly" );
     }
 
     Ptr World::searchPtrViaActorId (int actorId)
